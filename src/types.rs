@@ -5,7 +5,7 @@ pub use wallets::AddressKind;
 
 #[derive(Debug)]
 pub struct Address {
-    pub address: String,
+    pub text: String,
     pub qr_code: QrCode,
 }
 
@@ -39,7 +39,7 @@ impl Wallet {
     pub fn set_address(&mut self, address_kind: AddressKind, address: String) {
         let qr_code = QrCode::new(&address).unwrap();
         let address = Some(Address {
-            address,
+            text: address,
             qr_code,
         });
         match address_kind {

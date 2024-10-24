@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use iced::widget::{button, center, column, container, qr_code, row, text, Column};
-use iced::{Center, Element, Fill, Task};
+use iced::{clipboard, Center, Element, Fill, Task};
 
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use spaced::{
@@ -26,6 +26,7 @@ enum Screen {
 
 #[derive(Debug, Clone)]
 enum Message {
+    ClipboardWrite(String),
     ScreenSet(Screen),
     WalletLoad(String),
     WalletLoaded(Result<String, String>),
@@ -63,6 +64,7 @@ impl App {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::ClipboardWrite(string) => clipboard::write(string),
             Message::ScreenSet(screen) => {
                 self.screen = screen;
                 match screen {
@@ -182,16 +184,15 @@ fn receive_page<'a>(current_address_kind: AddressKind, wallet: &'a Wallet) -> El
     let address = wallet.get_address(current_address_kind);
 
     Column::new()
-        .push(
-            row![
-                tab_button("Coins", current_address_kind, AddressKind::Coin),
-                tab_button("Spaces", current_address_kind, AddressKind::Space),
-            ],
-        )
+        .push(row![
+            tab_button("Coins", current_address_kind, AddressKind::Coin),
+            tab_button("Spaces", current_address_kind, AddressKind::Space),
+        ])
         .push_maybe(address.map(|address| {
             center(column![
-                text(&address.address),
-                qr_code(&address.qr_code).cell_size(10),
+                center(qr_code(&address.qr_code).cell_size(5)),
+                text(&address.text),
+                button("Copy").on_press(Message::ClipboardWrite(address.text.clone())),
             ])
         }))
         .into()
