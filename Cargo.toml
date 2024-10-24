@@ -1,0 +1,11 @@
+[package]
+name = "spaces-wallet-iced"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = { version = "0.13.1", features = ["tokio", "qr_code"] }
+spaced = { path = "../spaced/node" }
+protocol = { path = "../spaced/protocol" }
+jsonrpsee = { version = "0.22.5", features = ["http-client"] }
+hex = "0.4.3"
