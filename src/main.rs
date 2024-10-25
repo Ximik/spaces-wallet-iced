@@ -40,6 +40,7 @@ enum Message {
 #[derive(Debug)]
 struct App {
     client: Arc<HttpClient>,
+    error: Option<String>,
     wallet: Option<Wallet>,
     screen: Screen,
 }
@@ -54,6 +55,7 @@ impl App {
         (
             Self {
                 client,
+                error: None,
                 wallet: None,
                 screen: Screen::Home,
             },
@@ -88,13 +90,17 @@ impl App {
                     Message::WalletLoaded,
                 )
             }
-            Message::WalletLoaded(Err(e)) => {
-                panic!("{}", e)
-            }
-            Message::WalletLoaded(Ok(wallet_name)) => {
-                self.wallet = Some(Wallet::new(wallet_name));
-                Task::done(Message::BalanceLoad)
-            }
+            Message::WalletLoaded(result) => match result {
+                Ok(name) => {
+                    self.error = None;
+                    self.wallet = Some(Wallet::new(name));
+                    Task::done(Message::BalanceLoad)
+                }
+                Err(error) => {
+                    self.error = Some(error);
+                    Task::none()
+                }
+            },
             Message::BalanceLoad => {
                 if let Some(wallet) = self.wallet.as_ref() {
                     let client = self.client.clone();
@@ -112,16 +118,19 @@ impl App {
                     Task::none()
                 }
             }
-            Message::BalanceLoaded(Err(e)) => {
-                eprintln!("{}", e);
-                Task::none()
-            }
-            Message::BalanceLoaded(Ok(balance)) => {
-                if let Some(wallet) = self.wallet.as_mut() {
-                    wallet.set_balance(balance);
+            Message::BalanceLoaded(result) => match result {
+                Ok(balance) => {
+                    self.error = None;
+                    if let Some(wallet) = self.wallet.as_mut() {
+                        wallet.set_balance(balance);
+                    }
+                    Task::none()
                 }
-                Task::none()
-            }
+                Err(error) => {
+                    self.error = Some(error);
+                    Task::none()
+                }
+            },
             Message::AddressLoad(address_kind) => {
                 if let Some(wallet) = self.wallet.as_ref() {
                     let client = self.client.clone();
@@ -142,21 +151,24 @@ impl App {
                     Task::none()
                 }
             }
-            Message::AddressLoaded(Err(e)) => {
-                eprintln!("{}", e);
-                Task::none()
-            }
-            Message::AddressLoaded(Ok((address_kind, address))) => {
-                if let Some(wallet) = self.wallet.as_mut() {
-                    wallet.set_address(address_kind, address);
+            Message::AddressLoaded(result) => match result {
+                Ok((address_kind, address)) => {
+                    self.error = None;
+                    if let Some(wallet) = self.wallet.as_mut() {
+                        wallet.set_address(address_kind, address);
+                    }
+                    Task::none()
                 }
-                Task::none()
-            }
+                Err(error) => {
+                    self.error = Some(error);
+                    Task::none()
+                }
+            },
         }
     }
 
     fn view(&self) -> Element<Message> {
-        if let Some(wallet) = self.wallet.as_ref() {
+        let main: Element<Message> = if let Some(wallet) = self.wallet.as_ref() {
             row![
                 navbar(self.screen),
                 container(match self.screen {
@@ -171,7 +183,26 @@ impl App {
             .into()
         } else {
             center(text("LOADING").align_x(Center)).into()
-        }
+        };
+        Column::new()
+            .push_maybe(self.error.as_ref().map(|error| {
+                container(
+                    text(error)
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(theme.extended_palette().danger.base.text),
+                        })
+                        .center()
+                        .width(Fill),
+                )
+                .style(|theme: &Theme| {
+                    container::Style::default()
+                        .background(theme.extended_palette().danger.base.color)
+                })
+                .width(Fill)
+                .padding(10)
+            }))
+            .push(main)
+            .into()
     }
 }
 
