@@ -4281,6 +4281,7 @@ dependencies = [
  "jsonrpsee",
  "protocol",
  "spaced",
+ "wallet",
 ]
 
 [[package]]

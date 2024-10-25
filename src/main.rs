@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use iced::widget::{button, center, column, container, qr_code, row, text, Column};
-use iced::{clipboard, Center, Element, Fill, Task};
+use iced::{clipboard, Center, Element, Fill, Font, Task, Theme};
 
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use spaced::{
@@ -9,12 +9,13 @@ use spaced::{
     rpc::RpcClient,
 };
 
-mod types;
-use types::*;
+mod wallet;
+use wallet::*;
 
 pub fn main() -> iced::Result {
     iced::application(App::title, App::update, App::view)
         .window_size((800.0, 500.0))
+        .default_font(Font::with_name("monospace"))
         .run_with(App::new)
 }
 
@@ -30,6 +31,8 @@ enum Message {
     ScreenSet(Screen),
     WalletLoad(String),
     WalletLoaded(Result<String, String>),
+    BalanceLoad,
+    BalanceLoaded(Result<JointBalance, String>),
     AddressLoad(AddressKind),
     AddressLoaded(Result<(AddressKind, String), String>),
 }
@@ -68,6 +71,7 @@ impl App {
             Message::ScreenSet(screen) => {
                 self.screen = screen;
                 match screen {
+                    Screen::Home => Task::done(Message::BalanceLoad),
                     Screen::Receive(address_kind) => Task::done(Message::AddressLoad(address_kind)),
                     _ => Task::none(),
                 }
@@ -89,6 +93,33 @@ impl App {
             }
             Message::WalletLoaded(Ok(wallet_name)) => {
                 self.wallet = Some(Wallet::new(wallet_name));
+                Task::done(Message::BalanceLoad)
+            }
+            Message::BalanceLoad => {
+                if let Some(wallet) = self.wallet.as_ref() {
+                    let client = self.client.clone();
+                    let wallet_name = wallet.get_name();
+                    Task::perform(
+                        async move {
+                            client
+                                .wallet_get_balance(&wallet_name)
+                                .await
+                                .map_err(|e| e.to_string())
+                        },
+                        Message::BalanceLoaded,
+                    )
+                } else {
+                    Task::none()
+                }
+            }
+            Message::BalanceLoaded(Err(e)) => {
+                eprintln!("{}", e);
+                Task::none()
+            }
+            Message::BalanceLoaded(Ok(balance)) => {
+                if let Some(wallet) = self.wallet.as_mut() {
+                    wallet.set_balance(balance);
+                }
                 Task::none()
             }
             Message::AddressLoad(address_kind) => {
@@ -128,10 +159,14 @@ impl App {
         if let Some(wallet) = self.wallet.as_ref() {
             row![
                 navbar(self.screen),
-                match self.screen {
-                    Screen::Home => center(text("HOME")),
+                container(match self.screen {
+                    Screen::Home => center(text(wallet.get_balance())),
                     Screen::Receive(address_kind) => container(receive_page(address_kind, wallet)),
-                }
+                })
+                .style(|theme: &Theme| {
+                    container::Style::default()
+                        .background(theme.extended_palette().background.weak.color)
+                })
             ]
             .into()
         } else {
@@ -154,14 +189,14 @@ fn navbar<'a>(current_screen: Screen) -> Element<'a, Message> {
         button.on_press(Message::ScreenSet(screen))
     };
 
-    column![
+    container(column![
         navbar_button("Home", matches!(current_screen, Screen::Home), Screen::Home),
         navbar_button(
             "Receive",
             matches!(current_screen, Screen::Receive(_)),
             Screen::Receive(AddressKind::Coin)
         ),
-    ]
+    ])
     .width(200)
     .into()
 }
@@ -190,7 +225,7 @@ fn receive_page<'a>(current_address_kind: AddressKind, wallet: &'a Wallet) -> El
         ])
         .push_maybe(address.map(|address| {
             center(column![
-                center(qr_code(&address.qr_code).cell_size(5)),
+                center(qr_code(&address.qr_code).cell_size(7)),
                 text(&address.text),
                 button("Copy").on_press(Message::ClipboardWrite(address.text.clone())),
             ])
