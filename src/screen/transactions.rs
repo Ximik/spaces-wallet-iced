@@ -1,10 +1,9 @@
 use iced::widget::{center, text};
-use iced::{Element, Task};
+use iced::Element;
 
-use crate::app::Message;
-
-pub fn update() -> (bool, Task<Message>) {
-    (true, Task::none())
+#[derive(Debug, Clone)]
+pub enum Message {
+    TransactionClicked(String),
 }
 
 pub fn view<'a>() -> Element<'a, Message> {

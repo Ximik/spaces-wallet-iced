@@ -1,35 +1,51 @@
 use iced::widget::{button, center, column, container, qr_code, text, toggler, Column};
-use iced::{Center, Element, Fill, Task};
+use iced::{Center, Element, Fill};
 
-use crate::app::{Message, RpcRequest};
-use crate::store::Store;
+use crate::store::Address;
 
-pub fn update(legacy_address: bool) -> (bool, Task<Message>) {
-    (
-        true,
-        Task::done(Message::InvokeRpc(RpcRequest::GetAddress {
-            legacy: legacy_address,
-        })),
-    )
+#[derive(Debug, Clone, Default)]
+pub struct State {
+    coin_address: bool,
 }
 
-pub fn view<'a>(store: &'a Store, legacy_address: bool) -> Element<'a, Message> {
-    let wallet = store.wallet.as_ref().unwrap();
-    let address = if legacy_address {
-        wallet.legacy_address.as_ref()
+#[derive(Debug, Clone)]
+pub enum Message {
+    AddressKindToggle(bool),
+    CopyPress(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum Task {
+    None,
+    WriteClipboard(String),
+}
+
+pub fn update(state: &mut State, message: Message) -> Task {
+    match message {
+        Message::AddressKindToggle(coin_address) => {
+            state.coin_address = coin_address;
+            Task::None
+        }
+        Message::CopyPress(s) => Task::WriteClipboard(s),
+    }
+}
+
+pub fn view<'a>(
+    state: &'a State,
+    coin_address: Option<&'a Address>,
+    space_address: Option<&'a Address>,
+) -> Element<'a, Message> {
+    let address = if state.coin_address {
+        coin_address
     } else {
-        wallet.address.as_ref()
+        space_address
     };
     Column::new()
         .push(
             container(
-                toggler(legacy_address)
-                    .label("SegWit v0 address")
-                    .on_toggle(move |_| {
-                        Message::UpdateScreen(crate::app::Screen::Receive {
-                            legacy_address: !legacy_address,
-                        })
-                    }),
+                toggler(state.coin_address)
+                    .label("Coins only address")
+                    .on_toggle(Message::AddressKindToggle),
             )
             .align_x(Center)
             .width(Fill),
@@ -41,7 +57,7 @@ pub fn view<'a>(store: &'a Store, legacy_address: bool) -> Element<'a, Message> 
                     qr_code(&address.qr_code).cell_size(7),
                     button("Copy")
                         .padding([10, 20])
-                        .on_press(Message::WriteClipboard(address.text.clone())),
+                        .on_press(Message::CopyPress(address.text.clone())),
                 ]
                 .align_x(Center)
                 .spacing(10),

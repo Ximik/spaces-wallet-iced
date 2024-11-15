@@ -4,7 +4,7 @@ use spaced::wallets;
 
 pub use protocol::{Covenant, FullSpaceOut};
 pub use spaced::config::ExtendedNetwork;
-pub use wallet::bitcoin::Amount;
+pub use wallet::bitcoin::{Amount, Denomination};
 pub use wallets::{AddressKind, Balance, WalletOutput};
 
 #[derive(Debug)]
@@ -23,8 +23,8 @@ impl Address {
 #[derive(Default, Debug)]
 pub struct Wallet {
     pub name: String,
-    pub address: Option<Address>,
-    pub legacy_address: Option<Address>,
+    pub coin_address: Option<Address>,
+    pub space_address: Option<Address>,
     pub balance: Amount,
     pub space_names: Vec<String>,
 }
@@ -38,12 +38,11 @@ impl Wallet {
     }
 }
 
-pub type Spaces = FxHashMap<String, Option<Covenant>>;
 #[derive(Default, Debug)]
 pub struct Store {
     pub tip_height: u32,
     pub wallet: Option<Wallet>,
-    pub spaces: Spaces,
+    pub spaces: FxHashMap<String, Option<Covenant>>,
 }
 
 impl Store {
@@ -53,5 +52,14 @@ impl Store {
 
     pub fn get_wallet_with_name(&mut self, name: &str) -> Option<&mut Wallet> {
         self.wallet.as_mut().filter(|wallet| wallet.name == name)
+    }
+
+    pub fn get_wallet_spaces(&self) -> Option<impl Iterator<Item = (&String, &Option<Covenant>)>> {
+        self.wallet.as_ref().map(|wallet| {
+            wallet
+                .space_names
+                .iter()
+                .map(|space_name| (space_name, self.spaces.get(space_name).unwrap_or(&None)))
+        })
     }
 }

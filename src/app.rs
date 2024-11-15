@@ -9,28 +9,14 @@ use jsonrpsee::core::ClientError;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use spaced::{
     config::default_spaces_rpc_port,
-    rpc::{RpcClient, RpcWalletRequest, RpcWalletTxBuilder, SendCoinsParams, ServerInfo},
+    rpc::{
+        BidParams, OpenParams, RpcClient, RpcWalletRequest, RpcWalletTxBuilder, SendCoinsParams,
+        ServerInfo,
+    },
 };
 
 use crate::screen;
 use crate::store::*;
-
-#[derive(Debug, Clone)]
-pub enum Screen {
-    Home,
-    Send {
-        address: String,
-        amount: String,
-        error: Option<String>,
-    },
-    Receive {
-        legacy_address: bool,
-    },
-    Space {
-        space_name: String,
-    },
-    Transactions,
-}
 
 #[derive(Debug, Clone)]
 enum RpcError {
@@ -65,14 +51,27 @@ impl fmt::Display for RpcError {
 type RpcResult<T> = Result<T, RpcError>;
 
 #[derive(Debug, Clone)]
-pub enum RpcRequest {
+enum RpcRequest {
     GetServerInfo,
-    GetSpaceInfo { space: String },
-    LoadWallet { wallet: String },
+    GetSpaceInfo {
+        space: String,
+    },
+    LoadWallet {
+        wallet: String,
+    },
     GetBalance,
     GetWalletSpaces,
-    GetAddress { legacy: bool },
-    SendCoins { address: String, amount: Amount },
+    GetAddress {
+        address_kind: AddressKind,
+    },
+    SendCoins {
+        recipient: String,
+        amount: Amount,
+    },
+    BidSpace {
+        space_name: String,
+        bid_amount: Amount,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -98,32 +97,57 @@ enum RpcResponse {
     },
     GetAddress {
         wallet: String,
-        legacy: bool,
+        address_kind: AddressKind,
         result: RpcResult<String>,
     },
     SendCoins {
         result: RpcResult<()>,
     },
+    BidSpace {
+        result: RpcResult<()>,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub enum Message {
-    WriteClipboard(String),
-    UpdateScreen(Screen),
-    InvokeRpc(RpcRequest),
-    #[allow(private_interfaces)]
-    HandleRpc(RpcResponse),
+enum Screen {
+    Home,
+    Send,
+    Receive,
+    Space(String),
+    Transactions,
+}
+
+#[derive(Debug, Clone)]
+enum Message {
+    RpcRequest(RpcRequest),
+    RpcResponse(RpcResponse),
+    SetScreen(Screen),
+    ScreenHome(screen::home::Message),
+    ScreenSend(screen::send::Message),
+    ScreenReceive(screen::receive::Message),
+    ScreenSpace(screen::space::Message),
+    ScreenTransactions(screen::transactions::Message),
 }
 
 pub struct App {
     rpc_client: Arc<HttpClient>,
     rpc_error: Option<String>,
-    screen: Screen,
     store: Store,
+    screen: Screen,
+    screen_send: screen::send::State,
+    screen_receive: screen::receive::State,
+    screen_space: screen::space::State,
 }
 
 impl App {
-    pub fn new() -> (Self, Task<Message>) {
+    pub fn run(window: iced::window::Settings) -> iced::Result {
+        iced::application(Self::title, Self::update, Self::view)
+            .subscription(Self::subscription)
+            .window(window)
+            .run_with(Self::new)
+    }
+
+    fn new() -> (Self, Task<Message>) {
         let spaced_rpc_url = format!(
             "http://127.0.0.1:{}",
             default_spaces_rpc_port(&ExtendedNetwork::Testnet4)
@@ -134,38 +158,25 @@ impl App {
             Self {
                 rpc_client,
                 rpc_error: None,
-                screen: Screen::Home,
                 store: Default::default(),
+                screen: Screen::Home,
+                screen_send: Default::default(),
+                screen_receive: Default::default(),
+                screen_space: Default::default(),
             },
-            Task::done(Message::InvokeRpc(RpcRequest::LoadWallet {
+            Task::done(Message::RpcRequest(RpcRequest::LoadWallet {
                 wallet: "default".into(),
             })),
         )
     }
 
-    pub fn title(&self) -> String {
+    fn title(&self) -> String {
         "Spaces Wallet".into()
     }
 
-    pub fn update(&mut self, message: Message) -> Task<Message> {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::WriteClipboard(string) => clipboard::write(string),
-            Message::UpdateScreen(screen) => {
-                let (valide, task) = match &screen {
-                    Screen::Home => screen::home::update(),
-                    Screen::Send {
-                        address, amount, ..
-                    } => screen::send::update(address, amount),
-                    Screen::Receive { legacy_address } => screen::receive::update(*legacy_address),
-                    Screen::Space { space_name } => screen::space::update(&space_name),
-                    Screen::Transactions => screen::transactions::update(),
-                };
-                if valide {
-                    self.screen = screen;
-                }
-                task
-            }
-            Message::InvokeRpc(request) => {
+            Message::RpcRequest(request) => {
                 let client = self.rpc_client.clone();
                 match request {
                     RpcRequest::GetServerInfo => Task::perform(
@@ -173,7 +184,7 @@ impl App {
                             let result = client.get_server_info().await.map_err(RpcError::from);
                             RpcResponse::GetServerInfo { result }
                         },
-                        Message::HandleRpc,
+                        Message::RpcResponse,
                     ),
                     RpcRequest::GetSpaceInfo { space } => Task::perform(
                         async move {
@@ -192,14 +203,14 @@ impl App {
                             let result = client.get_space(&spacehash).await.map_err(RpcError::from);
                             RpcResponse::GetSpaceInfo { space, result }
                         },
-                        Message::HandleRpc,
+                        Message::RpcResponse,
                     ),
                     RpcRequest::LoadWallet { wallet } => Task::perform(
                         async move {
                             let result = client.wallet_load(&wallet).await.map_err(RpcError::from);
                             RpcResponse::LoadWallet { wallet, result }
                         },
-                        Message::HandleRpc,
+                        Message::RpcResponse,
                     ),
                     RpcRequest::GetBalance => {
                         if let Some(wallet) = self.store.get_wallet_name() {
@@ -211,7 +222,7 @@ impl App {
                                         .map_err(RpcError::from);
                                     RpcResponse::GetBalance { wallet, result }
                                 },
-                                Message::HandleRpc,
+                                Message::RpcResponse,
                             )
                         } else {
                             Task::none()
@@ -227,40 +238,33 @@ impl App {
                                         .map_err(RpcError::from);
                                     RpcResponse::GetWalletSpaces { wallet, result }
                                 },
-                                Message::HandleRpc,
+                                Message::RpcResponse,
                             )
                         } else {
                             Task::none()
                         }
                     }
-                    RpcRequest::GetAddress { legacy } => {
+                    RpcRequest::GetAddress { address_kind } => {
                         if let Some(wallet) = self.store.get_wallet_name() {
                             Task::perform(
                                 async move {
                                     let result = client
-                                        .wallet_get_new_address(
-                                            &wallet,
-                                            if legacy {
-                                                AddressKind::Coin
-                                            } else {
-                                                AddressKind::Space
-                                            },
-                                        )
+                                        .wallet_get_new_address(&wallet, address_kind)
                                         .await
                                         .map_err(RpcError::from);
                                     RpcResponse::GetAddress {
                                         wallet,
-                                        legacy,
+                                        address_kind,
                                         result,
                                     }
                                 },
-                                Message::HandleRpc,
+                                Message::RpcResponse,
                             )
                         } else {
                             Task::none()
                         }
                     }
-                    RpcRequest::SendCoins { address, amount } => {
+                    RpcRequest::SendCoins { recipient, amount } => {
                         if let Some(wallet) = self.store.get_wallet_name() {
                             Task::perform(
                                 async move {
@@ -272,7 +276,7 @@ impl App {
                                                 requests: vec![RpcWalletRequest::SendCoins(
                                                     SendCoinsParams {
                                                         amount,
-                                                        to: address,
+                                                        to: recipient,
                                                     },
                                                 )],
                                                 fee_rate: None,
@@ -285,7 +289,53 @@ impl App {
                                         .map_err(RpcError::from);
                                     RpcResponse::SendCoins { result }
                                 },
-                                Message::HandleRpc,
+                                Message::RpcResponse,
+                            )
+                        } else {
+                            Task::none()
+                        }
+                    }
+                    RpcRequest::BidSpace {
+                        space_name,
+                        bid_amount,
+                    } => {
+                        if let Some(wallet) = self.store.get_wallet_name() {
+                            let name = format!("@{}", space_name);
+                            let amount = bid_amount.to_sat();
+                            let is_new = self
+                                .store
+                                .spaces
+                                .get(&space_name)
+                                .map_or(true, |inner| inner.is_none());
+                            Task::perform(
+                                async move {
+                                    let result = client
+                                        .wallet_send_request(
+                                            &wallet,
+                                            RpcWalletTxBuilder {
+                                                auction_outputs: None,
+                                                requests: vec![if is_new {
+                                                    RpcWalletRequest::Open(OpenParams {
+                                                        name,
+                                                        amount,
+                                                    })
+                                                } else {
+                                                    RpcWalletRequest::Bid(BidParams {
+                                                        name,
+                                                        amount,
+                                                    })
+                                                }],
+                                                fee_rate: None,
+                                                dust: None,
+                                                force: false,
+                                            },
+                                        )
+                                        .await
+                                        .map(|_| ())
+                                        .map_err(RpcError::from);
+                                    RpcResponse::BidSpace { result }
+                                },
+                                Message::RpcResponse,
                             )
                         } else {
                             Task::none()
@@ -293,7 +343,7 @@ impl App {
                     }
                 }
             }
-            Message::HandleRpc(response) => {
+            Message::RpcResponse(response) => {
                 self.rpc_error = None;
                 match response {
                     RpcResponse::GetServerInfo { result } => {
@@ -324,7 +374,7 @@ impl App {
                     RpcResponse::LoadWallet { wallet, result } => match result {
                         Ok(_) => {
                             self.store.wallet = Some(Wallet::new(wallet));
-                            Task::done(Message::UpdateScreen(Screen::Home))
+                            Task::done(Message::SetScreen(Screen::Home))
                         }
                         Err(e) => {
                             self.rpc_error = Some(e.to_string());
@@ -370,17 +420,16 @@ impl App {
                     }
                     RpcResponse::GetAddress {
                         wallet,
-                        legacy,
+                        address_kind,
                         result,
                     } => {
                         match result {
                             Ok(address) => {
                                 if let Some(wallet) = self.store.get_wallet_with_name(&wallet) {
                                     let address = Address::new(address);
-                                    if legacy {
-                                        wallet.legacy_address = Some(address);
-                                    } else {
-                                        wallet.address = Some(address);
+                                    match address_kind {
+                                        AddressKind::Coin => wallet.coin_address = Some(address),
+                                        AddressKind::Space => wallet.space_address = Some(address),
                                     }
                                 }
                             }
@@ -390,55 +439,144 @@ impl App {
                         }
                         Task::none()
                     }
-                    RpcResponse::SendCoins { result } => {
-                        match result {
-                            Ok(_) => Task::done(Message::UpdateScreen(Screen::Transactions)),
-                            Err(RpcError::Call { code, message }) => {
-                                if code == -1 {
-                                    match &self.screen {
-                                        Screen::Send {
-                                            address, amount, ..
-                                        } => {
-                                            self.screen = Screen::Send {
-                                                address: address.clone(),
-                                                amount: amount.clone(),
-                                                error: Some(message),
-                                            }
-                                        }
-                                        _ => {}
-                                    };
-                                } else {
-                                    self.rpc_error = Some(message);
-                                }
-                                Task::none()
+                    RpcResponse::SendCoins { result } => match result {
+                        Ok(_) => Task::done(Message::SetScreen(Screen::Transactions)),
+                        Err(RpcError::Call { code, message }) => {
+                            if code == -1 {
+                                self.screen_send.set_error(message);
+                            } else {
+                                self.rpc_error = Some(message);
                             }
-                            Err(e) => {
-                                // TODO: show method errors
-                                self.rpc_error = Some(e.to_string());
-                                Task::none()
+                            Task::none()
+                        }
+                        Err(e) => {
+                            self.rpc_error = Some(e.to_string());
+                            Task::none()
+                        }
+                    },
+                    RpcResponse::BidSpace { result } => match result {
+                        Ok(_) => Task::done(Message::SetScreen(Screen::Transactions)),
+                        Err(RpcError::Call { code, message }) => {
+                            if code == -1 {
+                                self.screen_space.set_error(message);
+                            } else {
+                                self.rpc_error = Some(message);
                             }
+                            Task::none()
+                        }
+                        Err(e) => {
+                            self.rpc_error = Some(e.to_string());
+                            Task::none()
+                        }
+                    },
+                }
+            }
+            Message::SetScreen(screen) => {
+                self.screen = screen;
+                match self.screen {
+                    Screen::Home => Task::batch([
+                        Task::done(Message::RpcRequest(RpcRequest::GetBalance)),
+                        Task::done(Message::RpcRequest(RpcRequest::GetWalletSpaces)),
+                    ]),
+                    Screen::Send => Task::none(),
+                    Screen::Receive => Task::batch([
+                        Task::done(Message::RpcRequest(RpcRequest::GetAddress {
+                            address_kind: AddressKind::Coin,
+                        })),
+                        Task::done(Message::RpcRequest(RpcRequest::GetAddress {
+                            address_kind: AddressKind::Space,
+                        })),
+                    ]),
+                    Screen::Space(ref space_name) => {
+                        if !space_name.is_empty() {
+                            Task::done(Message::RpcRequest(RpcRequest::GetSpaceInfo {
+                                space: space_name.clone(),
+                            }))
+                        } else {
+                            Task::none()
                         }
                     }
+                    Screen::Transactions => {
+                        // TODO
+                        Task::none()
+                    }
                 }
+            }
+            Message::ScreenHome(message) => match message {
+                screen::home::Message::SpaceClicked { space_name } => {
+                    Task::done(Message::SetScreen(Screen::Space(space_name)))
+                }
+            },
+            Message::ScreenSend(message) => {
+                match screen::send::update(&mut self.screen_send, message) {
+                    screen::send::Task::SendCoins { recipient, amount } => {
+                        Task::done(Message::RpcRequest(RpcRequest::SendCoins {
+                            recipient,
+                            amount,
+                        }))
+                    }
+                    screen::send::Task::None => Task::none(),
+                }
+            }
+            Message::ScreenReceive(message) => {
+                match screen::receive::update(&mut self.screen_receive, message) {
+                    screen::receive::Task::WriteClipboard(s) => clipboard::write(s),
+                    screen::receive::Task::None => Task::none(),
+                }
+            }
+            Message::ScreenSpace(message) => {
+                match screen::space::update(&mut self.screen_space, message) {
+                    screen::space::Task::SetSpace { space_name } => {
+                        Task::done(Message::SetScreen(Screen::Space(space_name)))
+                    }
+                    screen::space::Task::BidSpace {
+                        space_name,
+                        bid_amount,
+                    } => Task::done(Message::RpcRequest(RpcRequest::BidSpace {
+                        space_name,
+                        bid_amount,
+                    })),
+                    screen::space::Task::None => Task::none(),
+                }
+            }
+            Message::ScreenTransactions(message) => {
+                // TODO
+                Task::none()
             }
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<Message> {
         let main: Element<Message> = if self.store.wallet.is_some() {
             row![
                 navbar(&self.screen),
-                container(match &self.screen {
-                    Screen::Home => screen::home::view(&self.store),
-                    Screen::Send {
-                        address,
-                        amount,
-                        error,
-                    } => screen::send::view(address, amount, error),
-                    Screen::Receive { legacy_address } =>
-                        screen::receive::view(&self.store, *legacy_address),
-                    Screen::Space { space_name } => screen::space::view(&self.store, space_name),
-                    Screen::Transactions => screen::transactions::view(),
+                container(match self.screen {
+                    Screen::Home => screen::home::view(
+                        self.store.wallet.as_ref().unwrap().balance,
+                        self.store.get_wallet_spaces().unwrap(),
+                    )
+                    .map(Message::ScreenHome),
+                    Screen::Send => screen::send::view(&self.screen_send).map(Message::ScreenSend),
+                    Screen::Receive => screen::receive::view(
+                        &self.screen_receive,
+                        self.store.wallet.as_ref().unwrap().coin_address.as_ref(),
+                        self.store.wallet.as_ref().unwrap().space_address.as_ref(),
+                    )
+                    .map(Message::ScreenReceive),
+                    Screen::Space(ref space_name) => screen::space::view(
+                        &self.screen_space,
+                        space_name,
+                        self.store.spaces.get(space_name),
+                        self.store
+                            .wallet
+                            .as_ref()
+                            .unwrap()
+                            .space_names
+                            .contains(space_name),
+                    )
+                    .map(Message::ScreenSpace),
+                    Screen::Transactions =>
+                        screen::transactions::view().map(Message::ScreenTransactions),
                 })
                 .style(|theme: &Theme| {
                     container::Style::default()
@@ -447,7 +585,7 @@ impl App {
             ]
             .into()
         } else {
-            center(text("LOADING").align_x(Center)).into()
+            center(text("Loading").align_x(Center)).into()
         };
         Column::new()
             .push_maybe(self.rpc_error.as_ref().map(errorbar))
@@ -455,10 +593,10 @@ impl App {
             .into()
     }
 
-    pub fn subscription(&self) -> Subscription<Message> {
+    fn subscription(&self) -> Subscription<Message> {
         if self.store.wallet.is_some() && self.rpc_error.is_none() {
             time::every(time::Duration::from_secs(5))
-                .map(|_| Message::InvokeRpc(RpcRequest::GetServerInfo))
+                .map(|_| Message::RpcRequest(RpcRequest::GetServerInfo))
         } else {
             Subscription::none()
         }
@@ -493,33 +631,21 @@ fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {
             })
             .padding(10)
             .width(Fill);
-        button.on_press(Message::UpdateScreen(screen))
+        button.on_press(Message::SetScreen(screen))
     };
 
     container(column![
         navbar_button("Home", matches!(current_screen, Screen::Home), Screen::Home),
-        navbar_button(
-            "Send",
-            matches!(current_screen, Screen::Send { .. }),
-            Screen::Send {
-                address: String::new(),
-                amount: String::new(),
-                error: None,
-            }
-        ),
+        navbar_button("Send", matches!(current_screen, Screen::Send), Screen::Send),
         navbar_button(
             "Receive",
-            matches!(current_screen, Screen::Receive { .. }),
-            Screen::Receive {
-                legacy_address: false
-            }
+            matches!(current_screen, Screen::Receive),
+            Screen::Receive
         ),
         navbar_button(
-            "Spaces",
-            matches!(current_screen, Screen::Space { .. }),
-            Screen::Space {
-                space_name: String::new()
-            }
+            "Space",
+            matches!(current_screen, Screen::Space(..)),
+            Screen::Space(String::new())
         ),
         navbar_button(
             "Transactions",

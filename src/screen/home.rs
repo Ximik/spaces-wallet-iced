@@ -1,36 +1,30 @@
 use iced::widget::{button, column, scrollable, text, Column};
-use iced::{Element, Fill, Task};
+use iced::{Element, Fill};
 
-use crate::app::{Message, RpcRequest, Screen};
-use crate::store::Store;
+use crate::store::{Amount, Covenant};
 
-pub fn update() -> (bool, Task<Message>) {
-    (
-        true,
-        Task::batch([
-            Task::done(Message::InvokeRpc(RpcRequest::GetBalance)),
-            Task::done(Message::InvokeRpc(RpcRequest::GetWalletSpaces)),
-        ]),
-    )
+#[derive(Debug, Clone)]
+pub enum Message {
+    SpaceClicked { space_name: String },
 }
 
-pub fn view<'a>(store: &'a Store) -> Element<'a, Message> {
-    let wallet = store.wallet.as_ref().unwrap();
+pub fn view<'a>(
+    balance: Amount,
+    spaces: impl Iterator<Item = (&'a String, &'a Option<Covenant>)>,
+) -> Element<'a, Message> {
     column![
         text("Balance (BTC)"),
-        text(wallet.balance.to_btc()),
+        text(balance.to_btc()),
         text("Your spaces"),
-        scrollable(Column::with_children(wallet.space_names.iter().map(
-            |space_name| {
-                button(text(space_name.clone()))
-                    .on_press(Message::UpdateScreen(Screen::Space {
-                        space_name: space_name.to_string(),
-                    }))
-                    .width(Fill)
-                    .padding([10, 20])
-                    .into()
-            }
-        )))
+        scrollable(Column::with_children(spaces.map(|(space_name, _)| {
+            button(text(space_name))
+                .on_press(Message::SpaceClicked {
+                    space_name: space_name.clone(),
+                })
+                .width(Fill)
+                .padding([10, 20])
+                .into()
+        })))
     ]
     .padding(10)
     .height(Fill)

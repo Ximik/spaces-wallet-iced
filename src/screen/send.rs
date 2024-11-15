@@ -1,50 +1,81 @@
 use iced::widget::{button, column, container, text, text_input};
-use iced::{Element, Fill, Task, Theme};
+use iced::{Element, Fill, Theme};
 
-use crate::app::{Message, RpcRequest, Screen};
-use crate::store::Amount;
+use crate::store::{Amount, Denomination};
 
-pub fn update(address: &String, amount: &String) -> (bool, Task<Message>) {
-    (
-        address
-            .chars()
-            .all(|f| f.is_ascii_digit() || f.is_ascii_lowercase())
-            && (amount.is_empty() || amount.parse::<f64>().map_or(false, |n| n >= 0.0)),
-        Task::none(),
-    )
+#[derive(Debug, Clone, Default)]
+pub struct State {
+    recipient: String,
+    amount: String,
+    error: Option<String>,
 }
 
-pub fn view<'a>(
-    address: &'a String,
-    amount: &'a String,
-    error: &'a Option<String>,
-) -> Element<'a, Message> {
+impl State {
+    pub fn set_error(&mut self, error: String) {
+        self.error = Some(error)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    RecipientInput(String),
+    AmountInput(String),
+    SendPress,
+}
+
+#[derive(Debug, Clone)]
+pub enum Task {
+    None,
+    SendCoins { recipient: String, amount: Amount },
+}
+
+fn validate(recipient: &String, amount: &String) -> Option<(String, Amount)> {
+    if recipient.is_empty() {
+        return None;
+    }
+    Amount::from_str_in(amount, Denomination::Bitcoin)
+        .ok()
+        .map(|amount| (recipient.clone(), amount))
+}
+
+pub fn update(state: &mut State, message: Message) -> Task {
+    match message {
+        Message::RecipientInput(recipient) => {
+            if recipient
+                .chars()
+                .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
+            {
+                state.recipient = recipient;
+            }
+            Task::None
+        }
+        Message::AmountInput(amount) => {
+            if amount.chars().all(|c| c.is_digit(10) || c == '.') {
+                state.amount = amount
+            }
+            Task::None
+        }
+        Message::SendPress => {
+            state.error = None;
+            if let Some((recipient, amount)) = validate(&state.recipient, &state.amount) {
+                Task::SendCoins { recipient, amount }
+            } else {
+                Task::None
+            }
+        }
+    }
+}
+
+pub fn view<'a>(state: &'a State) -> Element<'a, Message> {
     container(
         column![
-            text_input("address", &address).on_input(|address| Message::UpdateScreen(
-                Screen::Send {
-                    address,
-                    amount: amount.to_string(),
-                    error: None,
-                }
-            )),
-            text_input("amount", &amount).on_input(|amount| Message::UpdateScreen(Screen::Send {
-                address: address.to_string(),
-                amount,
-                error: None,
-            })),
+            text_input("recipient", &state.recipient).on_input(Message::RecipientInput),
+            text_input("amount", &state.amount).on_input(Message::AmountInput),
             button("Send").on_press_maybe(
-                amount
-                    .parse::<f64>()
-                    .ok()
-                    .and_then(|v| Amount::from_btc(v).ok())
-                    .map(|amount| Message::InvokeRpc(RpcRequest::SendCoins {
-                        address: address.clone(),
-                        amount
-                    }))
+                validate(&state.recipient, &state.amount).map(|_| Message::SendPress)
             ),
         ]
-        .push_maybe(error.as_ref().map(|error| {
+        .push_maybe(state.error.as_ref().map(|error| {
             container(
                 text(error)
                     .style(|theme: &Theme| text::Style {
