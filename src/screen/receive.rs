@@ -1,6 +1,7 @@
-use iced::widget::{button, center, column, container, qr_code, text, toggler, Column};
-use iced::{Center, Element, Fill};
+use iced::widget::{button, center, column, container, qr_code, row, text, toggler, Column};
+use iced::{Center, Element, Fill, Font};
 
+use crate::icon;
 use crate::store::Address;
 
 #[derive(Debug, Clone, Default)]
@@ -53,11 +54,13 @@ pub fn view<'a>(
         .push_maybe(address.map(|address| {
             center(
                 column![
-                    text(&address.text).size(14),
+                    row![
+                        text(&address.text).font(Font::MONOSPACE),
+                        button(text(icon::COPY).font(icon::FONT))
+                            .on_press(Message::CopyPress(address.text.clone())),
+                    ]
+                    .align_y(Center),
                     qr_code(&address.qr_code).cell_size(7),
-                    button("Copy")
-                        .padding([10, 20])
-                        .on_press(Message::CopyPress(address.text.clone())),
                 ]
                 .align_x(Center)
                 .spacing(10),

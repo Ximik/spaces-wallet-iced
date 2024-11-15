@@ -2,6 +2,7 @@ use iced::widget::{button, center, column, container, text, text_input};
 use iced::{Element, Fill, Font, Theme};
 use protocol::Covenant;
 
+use crate::icon;
 use crate::store::{Amount, Denomination};
 
 #[derive(Debug, Clone, Default)]
@@ -118,8 +119,8 @@ pub fn view<'a>(
             .on_input(Message::SpaceNameInput)
             .font(Font::MONOSPACE)
             .icon(text_input::Icon {
-                font: Font::MONOSPACE,
-                code_point: '@',
+                font: icon::FONT,
+                code_point: icon::AT,
                 size: None,
                 spacing: 10.0,
                 side: text_input::Side::Left,

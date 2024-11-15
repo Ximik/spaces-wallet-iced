@@ -140,10 +140,19 @@ pub struct App {
 }
 
 impl App {
-    pub fn run(window: iced::window::Settings) -> iced::Result {
+    pub fn run() -> iced::Result {
+        let icon =
+            iced::window::icon::from_rgba(include_bytes!("../assets/spaces.rgba").to_vec(), 64, 64)
+                .expect("Failed to load icon");
+        let icons_font = include_bytes!("../assets/icons.ttf").as_slice();
         iced::application(Self::title, Self::update, Self::view)
+            .font(icons_font)
             .subscription(Self::subscription)
-            .window(window)
+            .window(iced::window::Settings {
+                size: (900.0, 500.0).into(),
+                icon: Some(icon),
+                ..Default::default()
+            })
             .run_with(Self::new)
     }
 
