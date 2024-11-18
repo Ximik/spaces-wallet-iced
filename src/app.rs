@@ -197,18 +197,14 @@ impl App {
                     ),
                     RpcRequest::GetSpaceInfo { space } => Task::perform(
                         async move {
-                            use protocol::{
-                                hasher::{KeyHasher, SpaceKey},
-                                sname::{NameLike, SName},
-                            };
+                            use protocol::{hasher::KeyHasher, slabel::SLabel};
                             use spaced::store::Sha256;
                             use std::str::FromStr;
 
                             let mut name = String::from("@");
                             name.push_str(&space);
-                            let sname = SName::from_str(&name).unwrap();
-                            let spacehash = SpaceKey::from(Sha256::hash(sname.to_bytes()));
-                            let spacehash = hex::encode(spacehash.as_slice());
+                            let sname = SLabel::from_str(&name).unwrap();
+                            let spacehash = hex::encode(Sha256::hash(sname.as_ref()));
                             let result = client.get_space(&spacehash).await.map_err(RpcError::from);
                             RpcResponse::GetSpaceInfo { space, result }
                         },
@@ -281,7 +277,7 @@ impl App {
                                         .wallet_send_request(
                                             &wallet,
                                             RpcWalletTxBuilder {
-                                                auction_outputs: None,
+                                                bidouts: None,
                                                 requests: vec![RpcWalletRequest::SendCoins(
                                                     SendCoinsParams {
                                                         amount,
@@ -322,7 +318,7 @@ impl App {
                                         .wallet_send_request(
                                             &wallet,
                                             RpcWalletTxBuilder {
-                                                auction_outputs: None,
+                                                bidouts: None,
                                                 requests: vec![if is_new {
                                                     RpcWalletRequest::Open(OpenParams {
                                                         name,
