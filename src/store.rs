@@ -5,7 +5,7 @@ use spaced::wallets;
 pub use protocol::{Covenant, FullSpaceOut};
 pub use spaced::config::ExtendedNetwork;
 pub use wallet::bitcoin::{Amount, Denomination};
-pub use wallets::{AddressKind, Balance, WalletOutput};
+pub use wallets::{AddressKind, Balance, TxInfo, WalletOutput};
 
 #[derive(Debug)]
 pub struct Address {
@@ -27,6 +27,7 @@ pub struct Wallet {
     pub space_address: Option<Address>,
     pub balance: Amount,
     pub space_names: Vec<String>,
+    pub transactions: Vec<TxInfo>,
 }
 
 impl Wallet {

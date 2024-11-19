@@ -28,5 +28,6 @@ pub fn view<'a>(
     ]
     .padding(10)
     .height(Fill)
+    .width(Fill)
     .into()
 }

@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::icon;
 use iced::time;
 use iced::widget::{button, center, column, container, row, text, Column};
 use iced::{clipboard, Center, Element, Fill, Subscription, Task, Theme};
@@ -61,6 +62,7 @@ enum RpcRequest {
     },
     GetBalance,
     GetWalletSpaces,
+    GetTransactions,
     GetAddress {
         address_kind: AddressKind,
     },
@@ -90,6 +92,10 @@ enum RpcResponse {
     GetBalance {
         wallet: String,
         result: RpcResult<Balance>,
+    },
+    GetTransactions {
+        wallet: String,
+        result: RpcResult<Vec<TxInfo>>,
     },
     GetWalletSpaces {
         wallet: String,
@@ -242,6 +248,22 @@ impl App {
                                         .await
                                         .map_err(RpcError::from);
                                     RpcResponse::GetWalletSpaces { wallet, result }
+                                },
+                                Message::RpcResponse,
+                            )
+                        } else {
+                            Task::none()
+                        }
+                    }
+                    RpcRequest::GetTransactions => {
+                        if let Some(wallet) = self.store.get_wallet_name() {
+                            Task::perform(
+                                async move {
+                                    let result = client
+                                        .wallet_list_transactions(&wallet, 100, 0)
+                                        .await
+                                        .map_err(RpcError::from);
+                                    RpcResponse::GetTransactions { wallet, result }
                                 },
                                 Message::RpcResponse,
                             )
@@ -423,6 +445,19 @@ impl App {
                         }
                         Task::none()
                     }
+                    RpcResponse::GetTransactions { wallet, result } => {
+                        match result {
+                            Ok(transactions) => {
+                                if let Some(wallet) = self.store.get_wallet_with_name(&wallet) {
+                                    wallet.transactions = transactions;
+                                }
+                            }
+                            Err(e) => {
+                                self.rpc_error = Some(e.to_string());
+                            }
+                        }
+                        Task::none()
+                    }
                     RpcResponse::GetAddress {
                         wallet,
                         address_kind,
@@ -502,8 +537,7 @@ impl App {
                         }
                     }
                     Screen::Transactions => {
-                        // TODO
-                        Task::none()
+                        Task::done(Message::RpcRequest(RpcRequest::GetTransactions))
                     }
                 }
             }
@@ -544,10 +578,9 @@ impl App {
                     screen::space::Task::None => Task::none(),
                 }
             }
-            Message::ScreenTransactions(message) => {
-                // TODO
-                Task::none()
-            }
+            Message::ScreenTransactions(message) => match message {
+                screen::transactions::Message::TxidCopyPress { txid } => clipboard::write(txid),
+            },
         }
     }
 
@@ -580,8 +613,10 @@ impl App {
                             .contains(space_name),
                     )
                     .map(Message::ScreenSpace),
-                    Screen::Transactions =>
-                        screen::transactions::view().map(Message::ScreenTransactions),
+                    Screen::Transactions => screen::transactions::view(
+                        &self.store.wallet.as_ref().unwrap().transactions
+                    )
+                    .map(Message::ScreenTransactions),
                 })
                 .style(|theme: &Theme| {
                     container::Style::default()
@@ -600,8 +635,12 @@ impl App {
 
     fn subscription(&self) -> Subscription<Message> {
         if self.store.wallet.is_some() && self.rpc_error.is_none() {
-            time::every(time::Duration::from_secs(5))
-                .map(|_| Message::RpcRequest(RpcRequest::GetServerInfo))
+            match self.screen {
+                Screen::Transactions => time::every(time::Duration::from_secs(5))
+                    .map(|_| Message::RpcRequest(RpcRequest::GetTransactions)),
+                _ => time::every(time::Duration::from_secs(5))
+                    .map(|_| Message::RpcRequest(RpcRequest::GetServerInfo)),
+            }
         } else {
             Subscription::none()
         }
@@ -626,9 +665,8 @@ fn errorbar<'a>(error: &'a String) -> Element<'a, Message> {
 }
 
 fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {
-    let navbar_button = |label, is_active, screen| {
-        let label = text(label);
-        let button = button(label)
+    let navbar_button = |label, icon: char, is_active, screen| {
+        let button = button(row![text(icon).font(icon::FONT).size(18), text(label)].spacing(10))
             .style(if is_active {
                 button::primary
             } else {
@@ -640,20 +678,33 @@ fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {
     };
 
     container(column![
-        navbar_button("Home", matches!(current_screen, Screen::Home), Screen::Home),
-        navbar_button("Send", matches!(current_screen, Screen::Send), Screen::Send),
+        navbar_button(
+            "Home",
+            icon::ARTBOARD,
+            matches!(current_screen, Screen::Home),
+            Screen::Home
+        ),
+        navbar_button(
+            "Send",
+            icon::ARROW_DOWN_FROM_ARC,
+            matches!(current_screen, Screen::Send),
+            Screen::Send
+        ),
         navbar_button(
             "Receive",
+            icon::ARROW_DOWN_TO_ARC,
             matches!(current_screen, Screen::Receive),
             Screen::Receive
         ),
         navbar_button(
             "Space",
+            icon::AT,
             matches!(current_screen, Screen::Space(..)),
             Screen::Space(String::new())
         ),
         navbar_button(
             "Transactions",
+            icon::ARROWS_EXCHANGE,
             matches!(current_screen, Screen::Transactions),
             Screen::Transactions
         ),
