@@ -1,9 +1,8 @@
-use iced::widget::{button, center, column, container, text, text_input};
-use iced::{Element, Fill, Font, Theme};
-use protocol::Covenant;
+use iced::widget::{button, center, column, container, text, text_input, Column};
+use iced::{Center, Element, Fill, Font, Shrink, Theme};
 
 use crate::icon;
-use crate::store::{Amount, Denomination};
+use crate::store::{Amount, Covenant, Denomination, SLabel};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {
@@ -21,7 +20,8 @@ impl State {
 pub enum Message {
     SpaceNameInput(String),
     BidAmountInput(String),
-    BidPress(String),
+    BidPress(SLabel, bool),
+    RegisterPress(SLabel),
 }
 
 #[derive(Debug, Clone)]
@@ -31,21 +31,26 @@ pub enum Task {
         space_name: String,
     },
     BidSpace {
-        space_name: String,
-        bid_amount: Amount,
+        slabel: SLabel,
+        amount: Amount,
+        open: bool,
+    },
+    RegisterSpace {
+        slabel: SLabel,
     },
 }
 
 fn validate(bid_amount: &String) -> Option<Amount> {
-    Amount::from_str_in(bid_amount, Denomination::Bitcoin).ok()
+    Amount::from_str_in(bid_amount, Denomination::Satoshi).ok()
 }
 
 pub fn update(state: &mut State, message: Message) -> Task {
+    state.error = None;
     match message {
         Message::SpaceNameInput(space_name) => {
             if space_name
                 .chars()
-                .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
+                .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase() || c == '-')
             {
                 Task::SetSpace { space_name }
             } else {
@@ -58,75 +63,168 @@ pub fn update(state: &mut State, message: Message) -> Task {
             }
             Task::None
         }
-        Message::BidPress(space_name) => {
-            state.error = None;
-            if let Some(bid_amount) = validate(&state.bid_amount) {
+        Message::BidPress(slabel, open) => {
+            if let Some(amount) = validate(&state.bid_amount) {
                 Task::BidSpace {
-                    space_name,
-                    bid_amount,
+                    slabel,
+                    amount,
+                    open,
                 }
             } else {
                 Task::None
             }
         }
+        Message::RegisterPress(slabel) => Task::RegisterSpace { slabel },
     }
 }
 
 pub fn view<'a>(
     state: &'a State,
+    tip_height: u32,
     space_name: &'a String,
-    space_covenant: Option<&'a Option<Covenant>>,
-    in_wallet: bool,
+    space_data: Option<(SLabel, Option<&'a Option<Covenant>>, bool)>,
 ) -> Element<'a, Message> {
-    let bid_form = |is_new: bool| {
-        column![
-            text(if is_new {
-                "This space doesn't exist. You can open it."
-            } else {
-                "This space exists. You can bid on it."
-            }),
-            text_input("amount", &state.bid_amount).on_input(Message::BidAmountInput),
-            button(if is_new { "Open" } else { "Bid" }).on_press_maybe(
-                validate(&state.bid_amount).map(|_| Message::BidPress(space_name.clone()))
-            ),
-        ]
-        .push_maybe(state.error.as_ref().map(|error| {
-            container(
-                text(error)
-                    .style(|theme: &Theme| text::Style {
-                        color: Some(theme.extended_palette().danger.base.text),
-                    })
-                    .center()
-                    .width(Fill),
+    let bid_form = |slabel: SLabel, total_burned: Option<&Amount>| {
+        Column::new()
+            .push_maybe(state.error.as_ref().map(|error| {
+                container(
+                    text(error)
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(theme.extended_palette().danger.base.text),
+                        })
+                        .center()
+                        .width(Fill),
+                )
+                .style(|theme: &Theme| {
+                    container::Style::default()
+                        .background(theme.extended_palette().danger.base.color)
+                })
+                .width(Fill)
+                .padding([10, 30])
+            }))
+            .push(
+                column![
+                    if let Some(total_burned) = total_burned {
+                        text(format!(
+                            "The space current bid is {}",
+                            total_burned.to_string_with_denomination(Denomination::Satoshi)
+                        ))
+                    } else {
+                        text("This space doesn't exist. You can open it.")
+                    },
+                    text_input("amount", &state.bid_amount)
+                        .on_input(Message::BidAmountInput)
+                        .padding(10),
+                ]
+                .spacing(5),
             )
-            .style(|theme: &Theme| {
-                container::Style::default().background(theme.extended_palette().danger.base.color)
-            })
-            .width(Fill)
-        }))
+            .push(
+                container(
+                    button(if total_burned.is_none() {
+                        "Open"
+                    } else {
+                        "Bid"
+                    })
+                    .on_press_maybe(
+                        validate(&state.bid_amount)
+                            .map(|_| Message::BidPress(slabel.clone(), total_burned.is_none())),
+                    )
+                    .padding([10, 20])
+                    .width(Shrink),
+                )
+                .align_x(Center)
+                .width(Fill),
+            )
+            .spacing(10)
     };
 
-    let main: Element<'a, Message> = match space_covenant {
-        None => text("Loading").into(),
-        Some(None) => bid_form(true).into(),
-        Some(Some(Covenant::Bid { .. })) => bid_form(false).into(),
-        Some(Some(Covenant::Transfer { .. })) => text("This space is owned").into(),
-        Some(Some(Covenant::Reserved)) => text("Reserved state").into(),
+    let register_form = |slabel: SLabel| {
+        Column::new()
+            .push_maybe(state.error.as_ref().map(|error| {
+                container(
+                    text(error)
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(theme.extended_palette().danger.base.text),
+                        })
+                        .center()
+                        .width(Fill),
+                )
+                .style(|theme: &Theme| {
+                    container::Style::default()
+                        .background(theme.extended_palette().danger.base.color)
+                })
+                .width(Fill)
+                .padding([10, 30])
+            }))
+            .push(text("You can claim the space.").align_x(Center))
+            .push(
+                container(
+                    button("Register")
+                        .on_press(Message::RegisterPress(slabel))
+                        .padding([10, 20])
+                        .width(Shrink),
+                )
+                .align_x(Center)
+                .width(Fill),
+            )
+            .spacing(10)
+    };
+
+    println!("{:?}", &space_data);
+
+    let main: Element<'a, Message> = match space_data {
+        None | Some((_, Some(Some(Covenant::Reserved)), _)) => {
+            text("Enter a valid space name in the input above").into()
+        }
+        Some((_, None, _)) => text("Loading").into(),
+        Some((slabel, Some(None), _)) => bid_form(slabel, None).into(),
+        Some((
+            slabel,
+            Some(Some(Covenant::Bid {
+                claim_height,
+                total_burned,
+                ..
+            })),
+            is_owned,
+        )) => {
+            if is_owned {
+                if claim_height
+                    .as_ref()
+                    .map_or(false, |height| *height <= tip_height)
+                {
+                    register_form(slabel).into()
+                } else {
+                    text("Current highest bid is yours").into()
+                }
+            } else {
+                bid_form(slabel, Some(total_burned)).into()
+            }
+        }
+        Some((_, Some(Some(Covenant::Transfer { .. })), is_owned)) => {
+            if is_owned {
+                text("The space is registered by you.").into()
+            } else {
+                text("The space is already registered.").into()
+            }
+        }
     };
 
     column![
-        text_input("space", space_name)
-            .on_input(Message::SpaceNameInput)
-            .font(Font::MONOSPACE)
-            .icon(text_input::Icon {
-                font: icon::FONT,
-                code_point: icon::AT,
-                size: None,
-                spacing: 10.0,
-                side: text_input::Side::Left,
-            })
-            .padding(10),
-        center(main),
+        container(
+            text_input("space", space_name)
+                .on_input(Message::SpaceNameInput)
+                .font(Font::MONOSPACE)
+                .icon(text_input::Icon {
+                    font: icon::FONT,
+                    code_point: icon::AT,
+                    size: None,
+                    spacing: 10.0,
+                    side: text_input::Side::Left,
+                })
+                .padding(10)
+        )
+        .padding(20),
+        center(main).padding(20),
     ]
     .spacing(10)
     .into()

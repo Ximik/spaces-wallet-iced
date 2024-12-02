@@ -2,8 +2,7 @@ use iced::widget::qr_code::Data as QrCode;
 use rustc_hash::FxHashMap;
 use spaced::wallets;
 
-pub use protocol::{Covenant, FullSpaceOut};
-pub use spaced::config::ExtendedNetwork;
+pub use protocol::{slabel::SLabel, Covenant, FullSpaceOut};
 pub use wallet::bitcoin::{Amount, Denomination};
 pub use wallets::{AddressKind, Balance, TxInfo, WalletOutput};
 
@@ -26,7 +25,7 @@ pub struct Wallet {
     pub coin_address: Option<Address>,
     pub space_address: Option<Address>,
     pub balance: Amount,
-    pub space_names: Vec<String>,
+    pub spaces: Vec<SLabel>,
     pub transactions: Vec<TxInfo>,
 }
 
@@ -43,7 +42,7 @@ impl Wallet {
 pub struct Store {
     pub tip_height: u32,
     pub wallet: Option<Wallet>,
-    pub spaces: FxHashMap<String, Option<Covenant>>,
+    pub spaces: FxHashMap<SLabel, Option<Covenant>>,
 }
 
 impl Store {
@@ -55,12 +54,15 @@ impl Store {
         self.wallet.as_mut().filter(|wallet| wallet.name == name)
     }
 
-    pub fn get_wallet_spaces(&self) -> Option<impl Iterator<Item = (&String, &Option<Covenant>)>> {
+    pub fn get_wallet_spaces(&self) -> Option<impl Iterator<Item = (&SLabel, &Covenant)>> {
         self.wallet.as_ref().map(|wallet| {
             wallet
-                .space_names
+                .spaces
                 .iter()
-                .map(|space_name| (space_name, self.spaces.get(space_name).unwrap_or(&None)))
+                .filter_map(|label| match self.spaces.get(label) {
+                    Some(Some(covenant)) => Some((label, covenant)),
+                    _ => None,
+                })
         })
     }
 }

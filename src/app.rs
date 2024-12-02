@@ -1,21 +1,20 @@
 use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::icon;
 use iced::time;
 use iced::widget::{button, center, column, container, row, text, Column};
 use iced::{clipboard, Center, Element, Fill, Subscription, Task, Theme};
 
 use jsonrpsee::core::ClientError;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
-use spaced::{
-    config::default_spaces_rpc_port,
-    rpc::{
-        BidParams, OpenParams, RpcClient, RpcWalletRequest, RpcWalletTxBuilder, SendCoinsParams,
-        ServerInfo,
-    },
+use protocol::slabel;
+use spaced::rpc::{
+    BidParams, OpenParams, RegisterParams, RpcClient, RpcWalletRequest, RpcWalletTxBuilder,
+    SendCoinsParams, ServerInfo,
 };
 
+use crate::icon;
 use crate::screen;
 use crate::store::*;
 
@@ -55,7 +54,7 @@ type RpcResult<T> = Result<T, RpcError>;
 enum RpcRequest {
     GetServerInfo,
     GetSpaceInfo {
-        space: String,
+        slabel: SLabel,
     },
     LoadWallet {
         wallet: String,
@@ -71,8 +70,12 @@ enum RpcRequest {
         amount: Amount,
     },
     BidSpace {
-        space_name: String,
-        bid_amount: Amount,
+        slabel: SLabel,
+        amount: Amount,
+        open: bool,
+    },
+    RegisterSpace {
+        slabel: SLabel,
     },
 }
 
@@ -82,7 +85,7 @@ enum RpcResponse {
         result: RpcResult<ServerInfo>,
     },
     GetSpaceInfo {
-        space: String,
+        slabel: SLabel,
         result: RpcResult<Option<FullSpaceOut>>,
     },
     LoadWallet {
@@ -110,6 +113,9 @@ enum RpcResponse {
         result: RpcResult<()>,
     },
     BidSpace {
+        result: RpcResult<()>,
+    },
+    RegisterSpace {
         result: RpcResult<()>,
     },
 }
@@ -146,7 +152,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn run() -> iced::Result {
+    pub fn run(args: crate::Args) -> iced::Result {
         let icon =
             iced::window::icon::from_rgba(include_bytes!("../assets/spaces.rgba").to_vec(), 64, 64)
                 .expect("Failed to load icon");
@@ -155,20 +161,20 @@ impl App {
             .font(icons_font)
             .subscription(Self::subscription)
             .window(iced::window::Settings {
-                size: (900.0, 500.0).into(),
+                size: (1000.0, 500.0).into(),
+                min_size: Some((1000.0, 500.0).into()),
                 icon: Some(icon),
                 ..Default::default()
             })
-            .run_with(Self::new)
+            .run_with(move || Self::new(args))
     }
 
-    fn new() -> (Self, Task<Message>) {
-        let spaced_rpc_url = format!(
-            "http://127.0.0.1:{}",
-            default_spaces_rpc_port(&ExtendedNetwork::Testnet4)
+    fn new(args: crate::Args) -> (Self, Task<Message>) {
+        let rpc_client: Arc<HttpClient> = Arc::new(
+            HttpClientBuilder::default()
+                .build(args.spaced_rpc_url.unwrap())
+                .unwrap(),
         );
-        let rpc_client: Arc<HttpClient> =
-            Arc::new(HttpClientBuilder::default().build(spaced_rpc_url).unwrap());
         (
             Self {
                 rpc_client,
@@ -180,7 +186,7 @@ impl App {
                 screen_space: Default::default(),
             },
             Task::done(Message::RpcRequest(RpcRequest::LoadWallet {
-                wallet: "default".into(),
+                wallet: args.wallet.into(),
             })),
         )
     }
@@ -201,18 +207,14 @@ impl App {
                         },
                         Message::RpcResponse,
                     ),
-                    RpcRequest::GetSpaceInfo { space } => Task::perform(
+                    RpcRequest::GetSpaceInfo { slabel } => Task::perform(
                         async move {
-                            use protocol::{hasher::KeyHasher, slabel::SLabel};
+                            use protocol::hasher::KeyHasher;
                             use spaced::store::Sha256;
-                            use std::str::FromStr;
 
-                            let mut name = String::from("@");
-                            name.push_str(&space);
-                            let sname = SLabel::from_str(&name).unwrap();
-                            let spacehash = hex::encode(Sha256::hash(sname.as_ref()));
-                            let result = client.get_space(&spacehash).await.map_err(RpcError::from);
-                            RpcResponse::GetSpaceInfo { space, result }
+                            let hash = hex::encode(Sha256::hash(slabel.as_ref()));
+                            let result = client.get_space(&hash).await.map_err(RpcError::from);
+                            RpcResponse::GetSpaceInfo { slabel, result }
                         },
                         Message::RpcResponse,
                     ),
@@ -309,6 +311,7 @@ impl App {
                                                 fee_rate: None,
                                                 dust: None,
                                                 force: false,
+                                                confirmed_only: false,
                                             },
                                         )
                                         .await
@@ -323,25 +326,21 @@ impl App {
                         }
                     }
                     RpcRequest::BidSpace {
-                        space_name,
-                        bid_amount,
+                        slabel,
+                        amount,
+                        open,
                     } => {
                         if let Some(wallet) = self.store.get_wallet_name() {
-                            let name = format!("@{}", space_name);
-                            let amount = bid_amount.to_sat();
-                            let is_new = self
-                                .store
-                                .spaces
-                                .get(&space_name)
-                                .map_or(true, |inner| inner.is_none());
                             Task::perform(
                                 async move {
+                                    let name = slabel.to_string();
+                                    let amount = amount.to_sat();
                                     let result = client
                                         .wallet_send_request(
                                             &wallet,
                                             RpcWalletTxBuilder {
                                                 bidouts: None,
-                                                requests: vec![if is_new {
+                                                requests: vec![if open {
                                                     RpcWalletRequest::Open(OpenParams {
                                                         name,
                                                         amount,
@@ -355,12 +354,45 @@ impl App {
                                                 fee_rate: None,
                                                 dust: None,
                                                 force: false,
+                                                confirmed_only: false,
                                             },
                                         )
                                         .await
                                         .map(|_| ())
                                         .map_err(RpcError::from);
                                     RpcResponse::BidSpace { result }
+                                },
+                                Message::RpcResponse,
+                            )
+                        } else {
+                            Task::none()
+                        }
+                    }
+                    RpcRequest::RegisterSpace { slabel } => {
+                        if let Some(wallet) = self.store.get_wallet_name() {
+                            Task::perform(
+                                async move {
+                                    let result = client
+                                        .wallet_send_request(
+                                            &wallet,
+                                            RpcWalletTxBuilder {
+                                                bidouts: None,
+                                                requests: vec![RpcWalletRequest::Register(
+                                                    RegisterParams {
+                                                        name: slabel.to_string(),
+                                                        to: None,
+                                                    },
+                                                )],
+                                                fee_rate: None,
+                                                dust: None,
+                                                force: false,
+                                                confirmed_only: false,
+                                            },
+                                        )
+                                        .await
+                                        .map(|_| ())
+                                        .map_err(RpcError::from);
+                                    RpcResponse::RegisterSpace { result }
                                 },
                                 Message::RpcResponse,
                             )
@@ -384,11 +416,11 @@ impl App {
                         }
                         Task::none()
                     }
-                    RpcResponse::GetSpaceInfo { space, result } => {
+                    RpcResponse::GetSpaceInfo { slabel, result } => {
                         match result {
                             Ok(out) => {
                                 self.store.spaces.insert(
-                                    space,
+                                    slabel,
                                     out.map(|out| out.spaceout.space.unwrap().covenant),
                                 );
                             }
@@ -424,19 +456,18 @@ impl App {
                     RpcResponse::GetWalletSpaces { wallet, result } => {
                         match result {
                             Ok(spaces) => {
-                                let space_names: Vec<_> = spaces
+                                let spaces: Vec<_> = spaces
                                     .into_iter()
                                     .map(|out| {
                                         let space = out.space.unwrap();
-                                        let space_name = space.name.to_string()[1..].to_string();
                                         self.store
                                             .spaces
-                                            .insert(space_name.clone(), Some(space.covenant));
-                                        space_name
+                                            .insert(space.name.clone(), Some(space.covenant));
+                                        space.name
                                     })
                                     .collect();
                                 if let Some(wallet) = self.store.get_wallet_with_name(&wallet) {
-                                    wallet.space_names = space_names;
+                                    wallet.spaces = spaces;
                                 }
                             }
                             Err(e) => {
@@ -509,6 +540,21 @@ impl App {
                             Task::none()
                         }
                     },
+                    RpcResponse::RegisterSpace { result } => match result {
+                        Ok(_) => Task::done(Message::SetScreen(Screen::Transactions)),
+                        Err(RpcError::Call { code, message }) => {
+                            if code == -1 {
+                                self.screen_space.set_error(message);
+                            } else {
+                                self.rpc_error = Some(message);
+                            }
+                            Task::none()
+                        }
+                        Err(e) => {
+                            self.rpc_error = Some(e.to_string());
+                            Task::none()
+                        }
+                    },
                 }
             }
             Message::SetScreen(screen) => {
@@ -528,9 +574,9 @@ impl App {
                         })),
                     ]),
                     Screen::Space(ref space_name) => {
-                        if !space_name.is_empty() {
+                        if let Ok(slabel) = SLabel::from_str(&format!("@{}", space_name)) {
                             Task::done(Message::RpcRequest(RpcRequest::GetSpaceInfo {
-                                space: space_name.clone(),
+                                slabel: slabel.clone(),
                             }))
                         } else {
                             Task::none()
@@ -569,12 +615,17 @@ impl App {
                         Task::done(Message::SetScreen(Screen::Space(space_name)))
                     }
                     screen::space::Task::BidSpace {
-                        space_name,
-                        bid_amount,
+                        slabel,
+                        amount,
+                        open,
                     } => Task::done(Message::RpcRequest(RpcRequest::BidSpace {
-                        space_name,
-                        bid_amount,
+                        slabel,
+                        amount,
+                        open,
                     })),
+                    screen::space::Task::RegisterSpace { slabel } => {
+                        Task::done(Message::RpcRequest(RpcRequest::RegisterSpace { slabel }))
+                    }
                     screen::space::Task::None => Task::none(),
                 }
             }
@@ -601,18 +652,22 @@ impl App {
                         self.store.wallet.as_ref().unwrap().space_address.as_ref(),
                     )
                     .map(Message::ScreenReceive),
-                    Screen::Space(ref space_name) => screen::space::view(
-                        &self.screen_space,
-                        space_name,
-                        self.store.spaces.get(space_name),
-                        self.store
-                            .wallet
-                            .as_ref()
-                            .unwrap()
-                            .space_names
-                            .contains(space_name),
-                    )
-                    .map(Message::ScreenSpace),
+                    Screen::Space(ref space_name) => {
+                        screen::space::view(
+                            &self.screen_space,
+                            self.store.tip_height,
+                            space_name,
+                            match SLabel::from_str(&format!("@{}", space_name)) {
+                                Ok(slabel) => Some((
+                                    slabel.clone(),
+                                    self.store.spaces.get(&slabel),
+                                    self.store.wallet.as_ref().unwrap().spaces.contains(&slabel),
+                                )),
+                                Err(_) => None,
+                            },
+                        )
+                        .map(Message::ScreenSpace)
+                    }
                     Screen::Transactions => screen::transactions::view(
                         &self.store.wallet.as_ref().unwrap().transactions
                     )
@@ -667,10 +722,14 @@ fn errorbar<'a>(error: &'a String) -> Element<'a, Message> {
 fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {
     let navbar_button = |label, icon: char, is_active, screen| {
         let button = button(row![text(icon).font(icon::FONT).size(18), text(label)].spacing(10))
-            .style(if is_active {
-                button::primary
-            } else {
-                button::text
+            .style(move |theme, status| {
+                let mut style = (if is_active {
+                    button::primary
+                } else {
+                    button::text
+                })(theme, status);
+                style.border = style.border.rounded(0.0);
+                style
             })
             .padding(10)
             .width(Fill);

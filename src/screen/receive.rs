@@ -1,5 +1,5 @@
-use iced::widget::{button, center, column, container, qr_code, row, text, toggler, Column};
-use iced::{Center, Element, Fill, Font};
+use iced::widget::{button, center, column, container, qr_code, row, text, toggler};
+use iced::{Border, Center, Element, Fill, Font, Padding, Theme};
 
 use crate::icon;
 use crate::store::Address;
@@ -36,35 +36,70 @@ pub fn view<'a>(
     coin_address: Option<&'a Address>,
     space_address: Option<&'a Address>,
 ) -> Element<'a, Message> {
-    let address = if state.coin_address {
+    let address_block: Element<'a, Message> = match if state.coin_address {
         coin_address
     } else {
         space_address
+    } {
+        Some(address) => column![
+            container(
+                row![
+                    text(&address.text).font(Font::MONOSPACE),
+                    button(text(icon::COPY).font(icon::FONT))
+                        .style(button::secondary)
+                        .on_press(Message::CopyPress(address.text.clone())),
+                ]
+                .align_y(Center)
+                .spacing(5),
+            )
+            .padding(Padding {
+                top: 5.0,
+                right: 5.0,
+                bottom: 5.0,
+                left: 15.0
+            })
+            .style(|theme: &Theme| {
+                let palette = theme.extended_palette();
+                container::Style::default().border(Border {
+                    color: palette.secondary.base.text,
+                    width: 1.0,
+                    radius: 0.into(),
+                })
+            }),
+            center(qr_code(&address.qr_code).cell_size(7))
+                .style(|theme: &Theme| {
+                    let palette = theme.palette();
+                    container::Style::default()
+                        .border(Border {
+                            color: palette.text,
+                            width: 2.0,
+                            radius: 0.into(),
+                        })
+                        .background(palette.background)
+                })
+                .width(300)
+                .height(300)
+        ]
+        .width(Fill)
+        .align_x(Center)
+        .spacing(10)
+        .into(),
+        None => center(text("Loading")).into(),
     };
-    Column::new()
-        .push(
+
+    center(
+        column![
+            address_block,
             container(
                 toggler(state.coin_address)
+                    .size(25)
                     .label("Coins only address")
                     .on_toggle(Message::AddressKindToggle),
             )
             .align_x(Center)
             .width(Fill),
-        )
-        .push_maybe(address.map(|address| {
-            center(
-                column![
-                    row![
-                        text(&address.text).font(Font::MONOSPACE),
-                        button(text(icon::COPY).font(icon::FONT))
-                            .on_press(Message::CopyPress(address.text.clone())),
-                    ]
-                    .align_y(Center),
-                    qr_code(&address.qr_code).cell_size(7),
-                ]
-                .align_x(Center)
-                .spacing(10),
-            )
-        }))
-        .into()
+        ]
+        .spacing(20),
+    )
+    .into()
 }

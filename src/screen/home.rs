@@ -1,7 +1,8 @@
 use iced::widget::{button, column, scrollable, text, Column};
 use iced::{Element, Fill};
 
-use crate::store::{Amount, Covenant};
+use crate::icon;
+use crate::store::{Amount, Covenant, SLabel};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -10,22 +11,23 @@ pub enum Message {
 
 pub fn view<'a>(
     balance: Amount,
-    spaces: impl Iterator<Item = (&'a String, &'a Option<Covenant>)>,
+    spaces: impl Iterator<Item = (&'a SLabel, &'a Covenant)>,
 ) -> Element<'a, Message> {
     column![
-        text("Balance (BTC)"),
-        text(balance.to_btc()),
+        text("Balance (SAT)"),
+        text(balance.to_sat()),
         text("Your spaces"),
-        scrollable(Column::with_children(spaces.map(|(space_name, _)| {
-            button(text(space_name))
+        scrollable(Column::with_children(spaces.map(|(slabel, _)| {
+            button(text(slabel.to_string()))
                 .on_press(Message::SpaceClicked {
-                    space_name: space_name.clone(),
+                    space_name: slabel.to_string()[1..].to_string(),
                 })
                 .width(Fill)
                 .padding([10, 20])
                 .into()
         })))
     ]
+    .spacing(5)
     .padding(10)
     .height(Fill)
     .width(Fill)

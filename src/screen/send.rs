@@ -1,4 +1,6 @@
-use iced::widget::{button, column, container, text, text_input};
+use iced::widget::{button, center, column, container, text, text_input, Column};
+use iced::Alignment::Center;
+use iced::Length::Shrink;
 use iced::{Element, Fill, Theme};
 
 use crate::store::{Amount, Denomination};
@@ -33,7 +35,7 @@ fn validate(recipient: &String, amount: &String) -> Option<(String, Amount)> {
     if recipient.is_empty() {
         return None;
     }
-    Amount::from_str_in(amount, Denomination::Bitcoin)
+    Amount::from_str_in(amount, Denomination::Satoshi)
         .ok()
         .map(|amount| (recipient.clone(), amount))
 }
@@ -43,14 +45,14 @@ pub fn update(state: &mut State, message: Message) -> Task {
         Message::RecipientInput(recipient) => {
             if recipient
                 .chars()
-                .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
+                .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase() || c == '@')
             {
                 state.recipient = recipient;
             }
             Task::None
         }
         Message::AmountInput(amount) => {
-            if amount.chars().all(|c| c.is_digit(10) || c == '.') {
+            if amount.chars().all(|c| c.is_digit(10)) {
                 state.amount = amount
             }
             Task::None
@@ -67,31 +69,51 @@ pub fn update(state: &mut State, message: Message) -> Task {
 }
 
 pub fn view<'a>(state: &'a State) -> Element<'a, Message> {
-    container(
-        column![
-            text_input("recipient", &state.recipient).on_input(Message::RecipientInput),
-            text_input("amount", &state.amount).on_input(Message::AmountInput),
-            button("Send").on_press_maybe(
-                validate(&state.recipient, &state.amount).map(|_| Message::SendPress)
-            ),
-        ]
-        .push_maybe(state.error.as_ref().map(|error| {
-            container(
-                text(error)
-                    .style(|theme: &Theme| text::Style {
-                        color: Some(theme.extended_palette().danger.base.text),
-                    })
-                    .center()
-                    .width(Fill),
+    center(
+        Column::new()
+            .push_maybe(state.error.as_ref().map(|error| {
+                container(
+                    text(error)
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(theme.extended_palette().danger.base.text),
+                        })
+                        .center()
+                        .width(Fill),
+                )
+                .style(|theme: &Theme| {
+                    container::Style::default()
+                        .background(theme.extended_palette().danger.base.color)
+                })
+                .width(Fill)
+                .padding([10, 30])
+            }))
+            .push(
+                column![
+                    text("Recipient address"),
+                    text_input("", &state.recipient)
+                        .on_input(Message::RecipientInput)
+                        .padding(10),
+                    text("Amount in SAT"),
+                    text_input("", &state.amount)
+                        .on_input(Message::AmountInput)
+                        .padding(10),
+                ]
+                .spacing(5),
             )
-            .style(|theme: &Theme| {
-                container::Style::default().background(theme.extended_palette().danger.base.color)
-            })
-            .width(Fill)
-        }))
-        .spacing(10),
+            .push(
+                container(
+                    button("Send")
+                        .on_press_maybe(
+                            validate(&state.recipient, &state.amount).map(|_| Message::SendPress),
+                        )
+                        .padding([10, 20])
+                        .width(Shrink),
+                )
+                .align_x(Center)
+                .width(Fill),
+            )
+            .spacing(10),
     )
-    .padding(10)
-    .height(Fill)
+    .padding(20)
     .into()
 }
