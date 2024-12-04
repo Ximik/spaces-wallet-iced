@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.13.1", features = ["tokio", "qr_code"] }
-spaced = { path = "../spaced/node" }
-protocol = { path = "../spaced/protocol" }
-wallet = { path = "../spaced/wallet" }
+spaced = { git = "https://github.com/Ximik/spaces.git", branch = "spaces-wallet" }
+protocol = { git = "https://github.com/Ximik/spaces.git", branch = "spaces-wallet" }
+wallet = { git = "https://github.com/Ximik/spaces.git", branch = "spaces-wallet" }
 jsonrpsee = { version = "0.22.5", features = ["http-client"] }
 clap = { version = "4.5.6", features = ["derive", "env"] }
 hex = "0.4.3"

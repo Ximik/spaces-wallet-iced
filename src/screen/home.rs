@@ -1,7 +1,6 @@
 use iced::widget::{button, column, scrollable, text, Column};
 use iced::{Element, Fill};
 
-use crate::icon;
 use crate::store::{Amount, Covenant, SLabel};
 
 #[derive(Debug, Clone)]

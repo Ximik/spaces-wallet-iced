@@ -1,5 +1,3 @@
-use std::fmt::format;
-
 use iced::widget::{
     button, center, column, container, horizontal_space, row, scrollable, text, Column,
 };

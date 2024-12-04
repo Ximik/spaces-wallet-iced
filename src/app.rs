@@ -8,7 +8,6 @@ use iced::{clipboard, Center, Element, Fill, Subscription, Task, Theme};
 
 use jsonrpsee::core::ClientError;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
-use protocol::slabel;
 use spaced::rpc::{
     BidParams, OpenParams, RegisterParams, RpcClient, RpcWalletRequest, RpcWalletTxBuilder,
     SendCoinsParams, ServerInfo,
@@ -312,6 +311,7 @@ impl App {
                                                 dust: None,
                                                 force: false,
                                                 confirmed_only: false,
+                                                skip_tx_check: false,
                                             },
                                         )
                                         .await
@@ -355,6 +355,7 @@ impl App {
                                                 dust: None,
                                                 force: false,
                                                 confirmed_only: false,
+                                                skip_tx_check: false,
                                             },
                                         )
                                         .await
@@ -387,6 +388,7 @@ impl App {
                                                 dust: None,
                                                 force: false,
                                                 confirmed_only: false,
+                                                skip_tx_check: false,
                                             },
                                         )
                                         .await
