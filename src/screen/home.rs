@@ -1,7 +1,10 @@
-use iced::widget::{button, column, scrollable, text, Column};
-use iced::{Element, Fill};
+use iced::alignment::Horizontal::Right;
+use iced::widget::{button, column, container, row, scrollable, text, Column};
+use iced::Alignment::Center;
+use iced::{Element, Fill, FillPortion};
 
-use crate::store::{Amount, Covenant, SLabel};
+use crate::store::{Amount, Covenant, Denomination, SLabel};
+use crate::util::height_to_est;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -10,21 +13,77 @@ pub enum Message {
 
 pub fn view<'a>(
     balance: Amount,
+    tip_height: u32,
     spaces: impl Iterator<Item = (&'a SLabel, &'a Covenant)>,
 ) -> Element<'a, Message> {
+    let mut spaces = spaces.collect::<Vec<_>>();
+    spaces.sort_unstable_by_key(|s| s.0);
+
+    let transfer_spaces = spaces
+        .iter()
+        .filter_map(|(slabel, covenant)| match covenant {
+            Covenant::Transfer { expire_height, .. } => Some((slabel, expire_height)),
+            _ => None,
+        });
+    let bid_spaces = spaces
+        .iter()
+        .filter_map(|(slabel, covenant)| match covenant {
+            Covenant::Bid {
+                total_burned,
+                claim_height,
+                ..
+            } => Some((slabel, total_burned, claim_height)),
+            _ => None,
+        });
+
     column![
         text("Balance (SAT)"),
         text(balance.to_sat()),
         text("Your spaces"),
-        scrollable(Column::with_children(spaces.map(|(slabel, _)| {
-            button(text(slabel.to_string()))
-                .on_press(Message::SpaceClicked {
-                    space_name: slabel.to_string()[1..].to_string(),
-                })
-                .width(Fill)
-                .padding([10, 20])
-                .into()
-        })))
+        scrollable(column![
+            column![
+                text("Registered"),
+                row![
+                    text("Space").width(FillPortion(1)),
+                    text("Expires").width(FillPortion(2)),
+                ],
+                Column::with_children(transfer_spaces.map(|(slabel, expire_height)| {
+                    row![
+                        text(slabel.to_string()).width(FillPortion(1)),
+                        text(expire_height.to_string()).width(FillPortion(1)),
+                    ]
+                    .into()
+                })),
+            ],
+            column![
+                text("Bid"),
+                row![
+                    text("Space").width(FillPortion(1)),
+                    text("Highest Bid").width(FillPortion(1)),
+                    text("Claim").width(FillPortion(2)),
+                ],
+                Column::with_children(bid_spaces.map(|(slabel, total_burned, claim_height)| {
+                    let space_name = slabel.to_string_unprefixed().unwrap();
+                    row![
+                        text(slabel.to_string()).width(FillPortion(1)),
+                        text(total_burned.to_string_with_denomination(Denomination::Satoshi))
+                            .width(FillPortion(1)),
+                        text(
+                            claim_height
+                                .map(|h| height_to_est(h, tip_height))
+                                .unwrap_or("no rollout".to_string())
+                        )
+                        .width(FillPortion(1)),
+                        container(button("View").on_press(Message::SpaceClicked { space_name }))
+                            .width(FillPortion(1))
+                            .align_x(Right),
+                    ]
+                    .padding(10)
+                    .align_y(Center)
+                    .into()
+                })),
+            ]
+        ])
     ]
     .spacing(5)
     .padding(10)

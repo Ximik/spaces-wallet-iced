@@ -644,6 +644,7 @@ impl App {
                 container(match self.screen {
                     Screen::Home => screen::home::view(
                         self.store.wallet.as_ref().unwrap().balance,
+                        self.store.tip_height,
                         self.store.get_wallet_spaces().unwrap(),
                     )
                     .map(Message::ScreenHome),

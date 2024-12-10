@@ -1,6 +1,7 @@
 mod app;
 mod screen;
 mod store;
+mod util;
 
 use app::App;
 
