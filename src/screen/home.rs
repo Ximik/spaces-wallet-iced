@@ -50,8 +50,14 @@ pub fn view<'a>(
                 Column::with_children(transfer_spaces.map(|(slabel, expire_height)| {
                     row![
                         text(slabel.to_string()).width(FillPortion(1)),
-                        text(expire_height.to_string()).width(FillPortion(1)),
+                        text(height_to_est(*expire_height, tip_height)).width(FillPortion(1)),
+                        container(button("View").on_press(Message::SpaceClicked {
+                            space_name: slabel.to_string_unprefixed().unwrap()
+                        }))
+                        .width(FillPortion(1))
+                        .align_x(Right),
                     ]
+                    .align_y(Center)
                     .into()
                 })),
             ],
@@ -78,12 +84,12 @@ pub fn view<'a>(
                             .width(FillPortion(1))
                             .align_x(Right),
                     ]
-                    .padding(10)
                     .align_y(Center)
                     .into()
                 })),
             ]
         ])
+        .spacing(10)
     ]
     .spacing(5)
     .padding(10)
