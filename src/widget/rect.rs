@@ -1,6 +1,6 @@
 use iced::{
     advanced::{layout, mouse, renderer, widget::Tree, Layout, Widget},
-    Border, Color, Element, Length, Rectangle, Size, Theme,
+    Background, Border, Color, Element, Length, Padding, Rectangle, Size, Theme,
 };
 
 pub struct Rect<'a, Theme = iced::Theme>
@@ -9,9 +9,6 @@ where
 {
     width: f32,
     height: f32,
-    border_radius: f32,
-    border_width: f32,
-    double: bool,
     class: Theme::Class<'a>,
 }
 
@@ -19,19 +16,10 @@ impl<'a, Theme> Rect<'a, Theme>
 where
     Theme: Catalog,
 {
-    pub fn new(
-        width: f32,
-        height: f32,
-        border_radius: f32,
-        border_width: f32,
-        double: bool,
-    ) -> Self {
+    pub fn new(width: f32, height: f32) -> Self {
         Self {
             width,
             height,
-            border_radius,
-            border_width,
-            double,
             class: Theme::default(),
         }
     }
@@ -87,29 +75,22 @@ where
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
-                border: Border {
-                    color: style.border,
-                    width: self.border_width,
-                    radius: self.border_radius.into(),
-                },
+                border: style.border,
                 ..renderer::Quad::default()
             },
-            style.background,
+            style.background.unwrap_or(Color::TRANSPARENT.into()),
         );
 
-        if self.double {
-            let bounds = bounds.shrink([self.height / 4.0, self.width / 4.0]);
+        if let Some(style) = style.inner {
+            let bounds = bounds.shrink(style.padding);
 
             renderer.fill_quad(
                 renderer::Quad {
                     bounds,
-                    border: Border {
-                        radius: self.border_radius.into(),
-                        ..Border::default()
-                    },
+                    border: style.border,
                     ..renderer::Quad::default()
                 },
-                style.border,
+                style.background.unwrap_or(Color::TRANSPARENT.into()),
             );
         }
     }
@@ -126,10 +107,18 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Style {
-    pub border: Color,
-    pub background: Color,
+    pub border: Border,
+    pub background: Option<Background>,
+    pub inner: Option<Inner>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Inner {
+    pub border: Border,
+    pub background: Option<Background>,
+    pub padding: Padding,
 }
 
 pub trait Catalog: Sized {
@@ -144,19 +133,10 @@ impl Catalog for Theme {
     type Class<'a> = StyleFn<'a, Self>;
 
     fn default<'a>() -> Self::Class<'a> {
-        Box::new(default)
+        Box::new(|_theme| Style::default())
     }
 
     fn style(&self, class: &Self::Class<'_>) -> Style {
         class(self)
-    }
-}
-
-pub fn default(theme: &Theme) -> Style {
-    let palette = theme.extended_palette();
-
-    Style {
-        border: palette.primary.strong.color,
-        background: Color::TRANSPARENT,
     }
 }
