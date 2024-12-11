@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.13.1", features = ["tokio", "qr_code"] }
+iced = { version = "0.13.1", features = ["tokio", "qr_code", "advanced"] }
 spaced = { path = "../spaced/node" }
 protocol = { path = "../spaced/protocol" }
 wallet = { path = "../spaced/wallet" }
