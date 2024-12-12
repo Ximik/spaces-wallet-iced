@@ -1,5 +1,4 @@
 use std::fmt;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use iced::time;
@@ -579,7 +578,7 @@ impl App {
                         })),
                     ]),
                     Screen::Space(ref space_name) => {
-                        if let Ok(slabel) = SLabel::from_str(&format!("@{}", space_name)) {
+                        if let Ok(slabel) = SLabel::from_str_unprefixed(space_name) {
                             Task::done(Message::RpcRequest(RpcRequest::GetSpaceInfo {
                                 slabel: slabel.clone(),
                             }))
@@ -663,7 +662,7 @@ impl App {
                             &self.screen_space,
                             self.store.tip_height,
                             space_name,
-                            match SLabel::from_str(&format!("@{}", space_name)) {
+                            match SLabel::from_str_unprefixed(&space_name) {
                                 Ok(slabel) => Some((
                                     slabel.clone(),
                                     self.store.spaces.get(&slabel),
