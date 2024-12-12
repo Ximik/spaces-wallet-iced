@@ -4,8 +4,8 @@ use iced::widget::{
 use iced::Alignment::Center;
 use iced::{Border, Element, Fill, Font, Theme};
 
-use crate::icon;
 use crate::store::TxInfo;
+use crate::widget::icon::{text_icon, Icon};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -22,15 +22,14 @@ pub fn view<'a>(transactions: &'a [TxInfo]) -> Element<'a, Message> {
                     let txid = transaction.txid.to_string();
                     container(column![
                         row![
-                            text(if transaction.sent >= transaction.received {
-                                icon::ARROW_DOWN_FROM_ARC
+                            text_icon(if transaction.sent >= transaction.received {
+                                Icon::ArrowDownFromArc
                             } else {
-                                icon::ARROW_DOWN_TO_ARC
-                            })
-                            .font(icon::FONT),
+                                Icon::ArrowDownToArc
+                            }),
                             text(txid.clone()).font(Font::MONOSPACE),
                             horizontal_space(),
-                            button(text(icon::COPY).font(icon::FONT))
+                            button(text_icon(Icon::Copy))
                                 .style(button::secondary)
                                 .on_press(Message::TxidCopyPress { txid })
                         ]

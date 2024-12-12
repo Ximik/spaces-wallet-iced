@@ -13,9 +13,9 @@ use spaced::rpc::{
     SendCoinsParams, ServerInfo,
 };
 
-use crate::icon;
 use crate::screen;
 use crate::store::*;
+use crate::widget::icon::{text_icon, Icon};
 
 #[derive(Debug, Clone)]
 enum RpcError {
@@ -723,8 +723,8 @@ fn errorbar<'a>(error: &'a String) -> Element<'a, Message> {
 }
 
 fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {
-    let navbar_button = |label, icon: char, is_active, screen| {
-        let button = button(row![text(icon).font(icon::FONT).size(18), text(label)].spacing(10))
+    let navbar_button = |label, icon: Icon, is_active, screen| {
+        let button = button(row![text_icon(icon).size(18), text(label)].spacing(10))
             .style(move |theme, status| {
                 let mut style = (if is_active {
                     button::primary
@@ -742,31 +742,31 @@ fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {
     container(column![
         navbar_button(
             "Home",
-            icon::ARTBOARD,
+            Icon::Artboard,
             matches!(current_screen, Screen::Home),
             Screen::Home
         ),
         navbar_button(
             "Send",
-            icon::ARROW_DOWN_FROM_ARC,
+            Icon::ArrowDownFromArc,
             matches!(current_screen, Screen::Send),
             Screen::Send
         ),
         navbar_button(
             "Receive",
-            icon::ARROW_DOWN_TO_ARC,
+            Icon::ArrowDownToArc,
             matches!(current_screen, Screen::Receive),
             Screen::Receive
         ),
         navbar_button(
             "Space",
-            icon::AT,
+            Icon::At,
             matches!(current_screen, Screen::Space(..)),
             Screen::Space(String::new())
         ),
         navbar_button(
             "Transactions",
-            icon::ARROWS_EXCHANGE,
+            Icon::ArrowsExchange,
             matches!(current_screen, Screen::Transactions),
             Screen::Transactions
         ),

@@ -1,8 +1,8 @@
 use iced::widget::{button, center, column, container, text, text_input, Column};
 use iced::{Center, Element, Fill, Font, Shrink, Theme};
 
-use crate::icon;
 use crate::store::{Amount, Covenant, Denomination, SLabel};
+use crate::widget::icon::{text_input_icon, Icon};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {
@@ -212,15 +212,14 @@ pub fn view<'a>(
     column![
         container(
             text_input("space", space_name)
+                .icon(text_input_icon(
+                    Icon::At,
+                    None,
+                    10.0,
+                    text_input::Side::Left
+                ))
                 .on_input(Message::SpaceNameInput)
                 .font(Font::MONOSPACE)
-                .icon(text_input::Icon {
-                    font: icon::FONT,
-                    code_point: icon::AT,
-                    size: None,
-                    spacing: 10.0,
-                    side: text_input::Side::Left,
-                })
                 .padding(10)
         )
         .padding(20),
