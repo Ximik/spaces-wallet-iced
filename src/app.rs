@@ -15,7 +15,10 @@ use spaced::rpc::{
 
 use crate::screen;
 use crate::store::*;
-use crate::widget::icon::{text_icon, Icon};
+use crate::widget::{
+    icon::{text_icon, Icon},
+    text::error,
+};
 
 #[derive(Debug, Clone)]
 enum RpcError {
@@ -686,7 +689,7 @@ impl App {
             center(text("Loading").align_x(Center)).into()
         };
         Column::new()
-            .push_maybe(self.rpc_error.as_ref().map(errorbar))
+            .push_maybe(self.rpc_error.as_ref().map(error))
             .push(main)
             .into()
     }
@@ -703,23 +706,6 @@ impl App {
             Subscription::none()
         }
     }
-}
-
-fn errorbar<'a>(error: &'a String) -> Element<'a, Message> {
-    container(
-        text(error)
-            .style(|theme: &Theme| text::Style {
-                color: Some(theme.extended_palette().danger.base.text),
-            })
-            .center()
-            .width(Fill),
-    )
-    .style(|theme: &Theme| {
-        container::Style::default().background(theme.extended_palette().danger.base.color)
-    })
-    .width(Fill)
-    .padding(10)
-    .into()
 }
 
 fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {

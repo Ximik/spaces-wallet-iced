@@ -1,17 +1,11 @@
 include!("../../assets/icons.rs");
 
 use iced::{
-    advanced,
-    widget::{text, text_input, Text},
+    widget::{text_input, Text},
     Font, Pixels,
 };
 
-pub fn text_icon<'a, Theme, Renderer>(icon: Icon) -> Text<'a, Theme, Renderer>
-where
-    Theme: text::Catalog + 'a,
-    Renderer: advanced::text::Renderer,
-    Renderer::Font: From<Font>,
-{
+pub fn text_icon<'a>(icon: Icon) -> Text<'a> {
     Text::new(icon.as_char()).font(FONT)
 }
 
