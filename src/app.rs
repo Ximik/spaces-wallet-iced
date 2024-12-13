@@ -15,8 +15,8 @@ use spaced::rpc::{
 use crate::screen;
 use crate::store::*;
 use crate::widget::{
+    block::error,
     icon::{text_icon, Icon},
-    text::error,
 };
 
 #[derive(Debug, Clone)]

@@ -5,7 +5,7 @@ use iced::Alignment::Center;
 use iced::{Border, Element, Fill, Font, Theme};
 
 use crate::store::TxInfo;
-use crate::widget::icon::{text_icon, Icon};
+use crate::widget::icon::{button_icon, text_icon, Icon};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -29,7 +29,7 @@ pub fn view<'a>(transactions: &'a [TxInfo]) -> Element<'a, Message> {
                             }),
                             text(txid.clone()).font(Font::MONOSPACE),
                             horizontal_space(),
-                            button(text_icon(Icon::Copy))
+                            button_icon(Icon::Copy)
                                 .style(button::secondary)
                                 .on_press(Message::TxidCopyPress { txid })
                         ]

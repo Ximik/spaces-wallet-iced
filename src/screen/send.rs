@@ -1,9 +1,10 @@
-use iced::widget::{button, center, column, container, text, text_input, Column};
+use iced::widget::{button, center, column, container, Column};
 use iced::Alignment::Center;
 use iced::Length::Shrink;
-use iced::{Element, Fill, Theme};
+use iced::{Element, Fill};
 
 use crate::store::{Amount, Denomination};
+use crate::widget::{block::error, form::labeled_input};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {
@@ -69,43 +70,34 @@ pub fn update(state: &mut State, message: Message) -> Task {
 }
 
 pub fn view<'a>(state: &'a State) -> Element<'a, Message> {
+    let is_valid = validate(&state.recipient, &state.amount).is_some();
+    let maybe_submit = is_valid.then_some(Message::SendPress);
     center(
         Column::new()
-            .push_maybe(state.error.as_ref().map(|error| {
-                container(
-                    text(error)
-                        .style(|theme: &Theme| text::Style {
-                            color: Some(theme.extended_palette().danger.base.text),
-                        })
-                        .center()
-                        .width(Fill),
-                )
-                .style(|theme: &Theme| {
-                    container::Style::default()
-                        .background(theme.extended_palette().danger.base.color)
-                })
-                .width(Fill)
-                .padding([10, 30])
-            }))
+            .push_maybe(state.error.as_ref().map(error))
             .push(
                 column![
-                    text("Recipient address"),
-                    text_input("", &state.recipient)
-                        .on_input(Message::RecipientInput)
-                        .padding(10),
-                    text("Amount in SAT"),
-                    text_input("", &state.amount)
-                        .on_input(Message::AmountInput)
-                        .padding(10),
+                    labeled_input(
+                        "Recipient address",
+                        "",
+                        &state.recipient,
+                        Message::RecipientInput,
+                        maybe_submit.clone(),
+                    ),
+                    labeled_input(
+                        "Amount (SAT)",
+                        "",
+                        &state.amount,
+                        Message::AmountInput,
+                        maybe_submit.clone(),
+                    ),
                 ]
                 .spacing(5),
             )
             .push(
                 container(
                     button("Send")
-                        .on_press_maybe(
-                            validate(&state.recipient, &state.amount).map(|_| Message::SendPress),
-                        )
+                        .on_press_maybe(maybe_submit)
                         .padding([10, 20])
                         .width(Shrink),
                 )

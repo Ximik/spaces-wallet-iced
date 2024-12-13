@@ -2,7 +2,7 @@ use iced::widget::{button, center, column, container, qr_code, row, text, toggle
 use iced::{Border, Center, Element, Fill, Font, Padding, Theme};
 
 use crate::store::Address;
-use crate::widget::icon::{text_icon, Icon};
+use crate::widget::icon::{button_icon, Icon};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {
@@ -45,7 +45,7 @@ pub fn view<'a>(
             container(
                 row![
                     text(&address.text).font(Font::MONOSPACE),
-                    button(text_icon(Icon::Copy))
+                    button_icon(Icon::Copy)
                         .style(button::secondary)
                         .on_press(Message::CopyPress(address.text.clone())),
                 ]
