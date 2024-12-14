@@ -1,10 +1,11 @@
-use iced::widget::{button, center, column, container, Column};
-use iced::Alignment::Center;
-use iced::Length::Shrink;
-use iced::{Element, Fill};
+use iced::widget::{center, column, Column};
+use iced::Element;
 
 use crate::store::{Amount, Denomination};
-use crate::widget::{block::error, form::labeled_input};
+use crate::widget::{
+    block::error,
+    form::{labeled_input, submit_button},
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {
@@ -78,32 +79,23 @@ pub fn view<'a>(state: &'a State) -> Element<'a, Message> {
             .push(
                 column![
                     labeled_input(
-                        "Recipient address",
-                        "",
-                        &state.recipient,
-                        Message::RecipientInput,
+                        "Amount",
+                        "Amount in sat",
+                        &state.amount,
+                        Message::AmountInput,
                         maybe_submit.clone(),
                     ),
                     labeled_input(
-                        "Amount (SAT)",
-                        "",
-                        &state.amount,
-                        Message::AmountInput,
+                        "To",
+                        "Bitcoin address or @space",
+                        &state.recipient,
+                        Message::RecipientInput,
                         maybe_submit.clone(),
                     ),
                 ]
                 .spacing(5),
             )
-            .push(
-                container(
-                    button("Send")
-                        .on_press_maybe(maybe_submit)
-                        .padding([10, 20])
-                        .width(Shrink),
-                )
-                .align_x(Center)
-                .width(Fill),
-            )
+            .push(submit_button("Send", maybe_submit))
             .spacing(10),
     )
     .padding(20)
