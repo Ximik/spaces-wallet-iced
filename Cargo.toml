@@ -4,7 +4,12 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.13.1", features = ["tokio", "qr_code", "advanced"] }
+iced = { version = "0.13.1", features = [
+    "tokio",
+    "image",
+    "qr_code",
+    "advanced",
+] }
 spaced = { path = "../spaced/node" }
 protocol = { path = "../spaced/protocol" }
 wallet = { path = "../spaced/wallet" }
@@ -12,3 +17,4 @@ jsonrpsee = { version = "0.22.5", features = ["http-client"] }
 clap = { version = "4.5.6", features = ["derive", "env"] }
 hex = "0.4.3"
 rustc-hash = "1.1"
+image = { version = "0.24.9", default-features = false, features = ["png"] }

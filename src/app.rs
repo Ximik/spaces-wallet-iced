@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use iced::time;
-use iced::widget::{button, center, column, container, row, text, Column};
-use iced::{clipboard, Center, Element, Fill, Subscription, Task, Theme};
+use iced::widget::{button, center, column, container, image, row, text, vertical_rule, Column};
+use iced::{clipboard, Center, Element, Fill, Subscription, Task};
 
 use jsonrpsee::core::ClientError;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
@@ -152,11 +152,11 @@ pub struct App {
     screen_space: screen::space::State,
 }
 
+const LOGO: &[u8] = include_bytes!("../assets/logo.png");
+
 impl App {
     pub fn run(args: crate::Args) -> iced::Result {
-        let icon =
-            iced::window::icon::from_rgba(include_bytes!("../assets/spaces.rgba").to_vec(), 64, 64)
-                .expect("Failed to load icon");
+        let icon = iced::window::icon::from_file_data(LOGO, None).expect("Failed to load icon");
         let icons_font = include_bytes!("../assets/icons.ttf").as_slice();
         iced::application(Self::title, Self::update, Self::view)
             .font(icons_font)
@@ -643,6 +643,7 @@ impl App {
         let main: Element<Message> = if self.store.wallet.is_some() {
             row![
                 navbar(&self.screen),
+                vertical_rule(2),
                 container(match self.screen {
                     Screen::Home => screen::home::view(
                         self.store.wallet.as_ref().unwrap().balance,
@@ -677,10 +678,6 @@ impl App {
                         &self.store.wallet.as_ref().unwrap().transactions
                     )
                     .map(Message::ScreenTransactions),
-                })
-                .style(|theme: &Theme| {
-                    container::Style::default()
-                        .background(theme.extended_palette().background.weak.color)
                 })
             ]
             .into()
@@ -725,6 +722,7 @@ fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {
     };
 
     container(column![
+        image(image::Handle::from_bytes(LOGO)),
         navbar_button(
             "Home",
             Icon::Artboard,
