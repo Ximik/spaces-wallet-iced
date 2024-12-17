@@ -80,7 +80,7 @@ mod timeline {
 
     const CIRCLE_RADIUS: f32 = 20.0;
     const LINE_WIDTH: f32 = 3.0;
-    const LINE_HEIGHT: f32 = 40.0;
+    const LINE_HEIGHT: f32 = 50.0;
     const ROW_SPACING: f32 = 10.0;
 
     fn circle<'a>(filled: bool, border: bool, inner: bool) -> Rect<'a> {
@@ -138,25 +138,34 @@ mod timeline {
         })
     }
 
-    pub fn view<'a, Message: 'a>(state: u8, label: &'a str) -> Element<'a, Message> {
-        const LABELS: [&str; 4] = ["Open", "Pre-auction", "Auction", "Registered"];
+    fn space<'a>() -> Rect<'a> {
+        Rect::new(CIRCLE_RADIUS * 2.0, LINE_HEIGHT)
+    }
+
+    pub fn view<'a, Message: 'a>(
+        state: u8,
+        label: impl text::IntoFragment<'a> + Clone,
+    ) -> Element<'a, Message> {
+        const LABELS: [&str; 4] = ["Open", "Pre-auction", "Auction", "Claim"];
         if state > LABELS.len() as u8 {
             panic!("state is out of range");
         }
-        Column::from_iter((0..(LABELS.len() as u8) * 2 - 1).map(|i| {
+        Column::from_iter((0..(LABELS.len() as u8) * 2).map(|i| {
             let c = i % 2 == 0;
             let n = i / 2;
             let o = n.cmp(&state);
             let row = Row::new()
                 .push(if c {
                     circle(o.is_lt(), o.is_le(), o.is_eq())
+                } else if n == LABELS.len() as u8 - 1 {
+                    space()
                 } else {
                     line(o.is_lt())
                 })
                 .push_maybe(if c {
                     Some(text(LABELS[n as usize]))
                 } else if o.is_eq() {
-                    Some(text(label))
+                    Some(text(label.clone()))
                 } else {
                     None
                 })
@@ -168,27 +177,106 @@ mod timeline {
     }
 }
 
-use crate::widget::{
-    form::Form,
-    icon::{text_input_icon, Icon},
+use crate::{
+    helper::height_to_est,
+    widget::{
+        form::Form,
+        icon::{text_input_icon, Icon},
+    },
 };
 use iced::{
     widget::{button, center, column, container, row, text, text_input, Space},
     Center, Element, Fill, Font, Shrink, Theme,
 };
+use wallet::bitcoin::absolute::Height;
 
-fn new_space_view<'a>(slabel: SLabel) -> Element<'a, Message> {
+fn open_view<'a>(slabel: SLabel) -> Element<'a, Message> {
     row![
-        timeline::view(
-            0,
-            "Submit an open transaction to propose the space for auction"
-        ),
+        timeline::view(0, "Make an open to propose the space for auction"),
         Form::new("Open", None).add_labeled_input(
-            "Open bid",
+            "Amount",
             "amount in sat",
             "100",
             Message::AmountInput
         )
+    ]
+    .into()
+}
+
+fn bid_view<'a>(
+    slabel: SLabel,
+    tip_height: u32,
+    claim_height: Option<u32>,
+    current_bid: Amount,
+    is_owned: bool,
+) -> Element<'a, Message> {
+    row![
+        timeline::view(
+            if claim_height.is_none() { 1 } else { 2 },
+            claim_height.map_or(
+                "Make a bid to improve the chance of moving the space to auction".to_string(),
+                |height| format!("Auction ends {}", height_to_est(height, tip_height))
+            )
+        ),
+        column![
+            text(format!("Current bid: {} sat", current_bid.to_sat())),
+            text(if is_owned {
+                "It is yours bid"
+            } else {
+                "It is not yours bid"
+            }),
+            Form::new("Bid", None).add_labeled_input(
+                "Amount",
+                "amount in sat",
+                "100",
+                Message::AmountInput
+            )
+        ]
+    ]
+    .into()
+}
+
+fn claim_view<'a>(slabel: SLabel, current_bid: Amount, is_owned: bool) -> Element<'a, Message> {
+    row![
+        timeline::view(
+            3,
+            if is_owned {
+                "You can claim the space"
+            } else {
+                "The auction is ended, but you still can outbid"
+            }
+        ),
+        if is_owned {
+            column![Form::new("Register", None)]
+        } else {
+            column![
+                text(format!("Current bid: {} sat", current_bid.to_sat())),
+                Form::new("Bid", None).add_labeled_input(
+                    "Amount",
+                    "amount in sat",
+                    "100",
+                    Message::AmountInput
+                ),
+            ]
+        }
+    ]
+    .into()
+}
+
+fn registered_view<'a>(
+    slabel: SLabel,
+    tip_height: u32,
+    expire_height: u32,
+) -> Element<'a, Message> {
+    row![
+        timeline::view(
+            4,
+            format!(
+                "The space registration expires {}",
+                height_to_est(expire_height, tip_height)
+            )
+        ),
+        Space::new(Fill, Fill)
     ]
     .into()
 }
@@ -204,37 +292,25 @@ pub fn view<'a>(
             text("Enter a valid space name in the input above").into()
         }
         Some((_, None, _)) => Space::new(Fill, Fill).into(),
-        Some((slabel, _, _)) => new_space_view(slabel),
-        // Some((slabel, Some(None), _)) => bid_form(slabel, None).into(),
-        // Some((
-        //     slabel,
-        //     Some(Some(Covenant::Bid {
-        //         claim_height,
-        //         total_burned,
-        //         ..
-        //     })),
-        //     is_owned,
-        // )) => {
-        //     if is_owned {
-        //         if claim_height
-        //             .as_ref()
-        //             .map_or(false, |height| *height <= tip_height)
-        //         {
-        //             register_form(slabel).into()
-        //         } else {
-        //             text("Current highest bid is yours").into()
-        //         }
-        //     } else {
-        //         bid_form(slabel, Some(total_burned)).into()
-        //     }
-        // }
-        // Some((_, Some(Some(Covenant::Transfer { .. })), is_owned)) => {
-        //     if is_owned {
-        //         text("The space is registered by you.").into()
-        //     } else {
-        //         text("The space is already registered.").into()
-        //     }
-        // }
+        Some((slabel, Some(None), _)) => open_view(slabel),
+        Some((
+            slabel,
+            Some(Some(Covenant::Bid {
+                claim_height,
+                total_burned,
+                ..
+            })),
+            is_owned,
+        )) => {
+            if claim_height.map_or(false, |height| height <= tip_height) {
+                claim_view(slabel, *total_burned, is_owned)
+            } else {
+                bid_view(slabel, tip_height, *claim_height, *total_burned, is_owned)
+            }
+        }
+        Some((slabel, Some(Some(Covenant::Transfer { expire_height, .. })), _)) => {
+            registered_view(slabel, tip_height, *expire_height)
+        }
     };
 
     column![
