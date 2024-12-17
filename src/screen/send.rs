@@ -80,14 +80,14 @@ pub fn view<'a>(state: &'a State) -> Element<'a, Message> {
                 column![
                     labeled_input(
                         "Amount",
-                        "Amount in sat",
+                        "amount in sat",
                         &state.amount,
                         Message::AmountInput,
                         maybe_submit.clone(),
                     ),
                     labeled_input(
                         "To",
-                        "Bitcoin address or @space",
+                        "bitcoin address or @space",
                         &state.recipient,
                         Message::RecipientInput,
                         maybe_submit.clone(),

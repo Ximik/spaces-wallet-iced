@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use iced::time;
-use iced::widget::{button, center, column, container, row, text, Column};
+use iced::widget::{button, center, column, container, row, text, vertical_rule, Column};
 use iced::{clipboard, Center, Element, Fill, Subscription, Task, Theme};
 
 use jsonrpsee::core::ClientError;
@@ -54,30 +54,16 @@ type RpcResult<T> = Result<T, RpcError>;
 #[derive(Debug, Clone)]
 enum RpcRequest {
     GetServerInfo,
-    GetSpaceInfo {
-        slabel: SLabel,
-    },
-    LoadWallet {
-        wallet: String,
-    },
+    GetSpaceInfo { slabel: SLabel },
+    LoadWallet { wallet: String },
     GetBalance,
     GetWalletSpaces,
     GetTransactions,
-    GetAddress {
-        address_kind: AddressKind,
-    },
-    SendCoins {
-        recipient: String,
-        amount: Amount,
-    },
-    BidSpace {
-        slabel: SLabel,
-        amount: Amount,
-        open: bool,
-    },
-    RegisterSpace {
-        slabel: SLabel,
-    },
+    GetAddress { address_kind: AddressKind },
+    SendCoins { recipient: String, amount: Amount },
+    OpenSpace { slabel: SLabel, amount: Amount },
+    BidSpace { slabel: SLabel, amount: Amount },
+    RegisterSpace { slabel: SLabel },
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +97,9 @@ enum RpcResponse {
         result: RpcResult<String>,
     },
     SendCoins {
+        result: RpcResult<()>,
+    },
+    OpenSpace {
         result: RpcResult<()>,
     },
     BidSpace {
@@ -327,11 +316,7 @@ impl App {
                             Task::none()
                         }
                     }
-                    RpcRequest::BidSpace {
-                        slabel,
-                        amount,
-                        open,
-                    } => {
+                    RpcRequest::OpenSpace { slabel, amount } => {
                         if let Some(wallet) = self.store.get_wallet_name() {
                             Task::perform(
                                 async move {
@@ -342,17 +327,42 @@ impl App {
                                             &wallet,
                                             RpcWalletTxBuilder {
                                                 bidouts: None,
-                                                requests: vec![if open {
-                                                    RpcWalletRequest::Open(OpenParams {
-                                                        name,
-                                                        amount,
-                                                    })
-                                                } else {
-                                                    RpcWalletRequest::Bid(BidParams {
-                                                        name,
-                                                        amount,
-                                                    })
-                                                }],
+                                                requests: vec![RpcWalletRequest::Open(
+                                                    OpenParams { name, amount },
+                                                )],
+                                                fee_rate: None,
+                                                dust: None,
+                                                force: false,
+                                                confirmed_only: false,
+                                                skip_tx_check: false,
+                                            },
+                                        )
+                                        .await
+                                        .map(|_| ())
+                                        .map_err(RpcError::from);
+                                    RpcResponse::OpenSpace { result }
+                                },
+                                Message::RpcResponse,
+                            )
+                        } else {
+                            Task::none()
+                        }
+                    }
+                    RpcRequest::BidSpace { slabel, amount } => {
+                        if let Some(wallet) = self.store.get_wallet_name() {
+                            Task::perform(
+                                async move {
+                                    let name = slabel.to_string();
+                                    let amount = amount.to_sat();
+                                    let result = client
+                                        .wallet_send_request(
+                                            &wallet,
+                                            RpcWalletTxBuilder {
+                                                bidouts: None,
+                                                requests: vec![RpcWalletRequest::Bid(BidParams {
+                                                    name,
+                                                    amount,
+                                                })],
                                                 fee_rate: None,
                                                 dust: None,
                                                 force: false,
@@ -529,6 +539,21 @@ impl App {
                             Task::none()
                         }
                     },
+                    RpcResponse::OpenSpace { result } => match result {
+                        Ok(_) => Task::done(Message::SetScreen(Screen::Transactions)),
+                        Err(RpcError::Call { code, message }) => {
+                            if code == -1 {
+                                self.screen_space.set_error(message);
+                            } else {
+                                self.rpc_error = Some(message);
+                            }
+                            Task::none()
+                        }
+                        Err(e) => {
+                            self.rpc_error = Some(e.to_string());
+                            Task::none()
+                        }
+                    },
                     RpcResponse::BidSpace { result } => match result {
                         Ok(_) => Task::done(Message::SetScreen(Screen::Transactions)),
                         Err(RpcError::Call { code, message }) => {
@@ -618,15 +643,15 @@ impl App {
                     screen::space::Task::SetSpace { space_name } => {
                         Task::done(Message::SetScreen(Screen::Space(space_name)))
                     }
-                    screen::space::Task::BidSpace {
-                        slabel,
-                        amount,
-                        open,
-                    } => Task::done(Message::RpcRequest(RpcRequest::BidSpace {
-                        slabel,
-                        amount,
-                        open,
-                    })),
+                    screen::space::Task::OpenSpace { slabel, amount } => {
+                        Task::done(Message::RpcRequest(RpcRequest::OpenSpace {
+                            slabel,
+                            amount,
+                        }))
+                    }
+                    screen::space::Task::BidSpace { slabel, amount } => {
+                        Task::done(Message::RpcRequest(RpcRequest::BidSpace { slabel, amount }))
+                    }
                     screen::space::Task::RegisterSpace { slabel } => {
                         Task::done(Message::RpcRequest(RpcRequest::RegisterSpace { slabel }))
                     }
@@ -643,6 +668,7 @@ impl App {
         let main: Element<Message> = if self.store.wallet.is_some() {
             row![
                 navbar(&self.screen),
+                vertical_rule(3),
                 container(match self.screen {
                     Screen::Home => screen::home::view(
                         self.store.wallet.as_ref().unwrap().balance,
@@ -678,10 +704,7 @@ impl App {
                     )
                     .map(Message::ScreenTransactions),
                 })
-                .style(|theme: &Theme| {
-                    container::Style::default()
-                        .background(theme.extended_palette().background.weak.color)
-                })
+                .padding(10.0)
             ]
             .into()
         } else {
@@ -710,14 +733,10 @@ impl App {
 fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {
     let navbar_button = |label, icon: Icon, is_active, screen| {
         let button = button(row![text_icon(icon).size(18), text(label)].spacing(10))
-            .style(move |theme, status| {
-                let mut style = (if is_active {
-                    button::primary
-                } else {
-                    button::text
-                })(theme, status);
-                style.border = style.border.rounded(0.0);
-                style
+            .style(if is_active {
+                button::primary
+            } else {
+                button::text
             })
             .padding(10)
             .width(Fill);

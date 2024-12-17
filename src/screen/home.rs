@@ -92,7 +92,6 @@ pub fn view<'a>(
         .spacing(10)
     ]
     .spacing(5)
-    .padding(10)
     .height(Fill)
     .width(Fill)
     .into()
