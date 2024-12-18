@@ -164,7 +164,7 @@ mod timeline {
                 })
                 .push_maybe(if c {
                     Some(text(LABELS[n as usize]))
-                } else if o.is_eq() {
+                } else if (state == LABELS.len() as u8 && state - n == 1) || o.is_eq() {
                     Some(text(label.clone()))
                 } else {
                     None
@@ -247,7 +247,7 @@ fn claim_view<'a>(slabel: SLabel, current_bid: Amount, is_owned: bool) -> Elemen
             }
         ),
         if is_owned {
-            column![Form::new("Register", None)]
+            column![Form::new("Claim", None)]
         } else {
             column![
                 text(format!("Current bid: {} sat", current_bid.to_sat())),
@@ -267,6 +267,7 @@ fn registered_view<'a>(
     slabel: SLabel,
     tip_height: u32,
     expire_height: u32,
+    is_owned: bool,
 ) -> Element<'a, Message> {
     row![
         timeline::view(
@@ -276,7 +277,11 @@ fn registered_view<'a>(
                 height_to_est(expire_height, tip_height)
             )
         ),
-        Space::new(Fill, Fill)
+        if is_owned {
+            column![Form::new("Send", None)]
+        } else {
+            column![Space::new(Fill, Fill)]
+        }
     ]
     .into()
 }
@@ -308,8 +313,8 @@ pub fn view<'a>(
                 bid_view(slabel, tip_height, *claim_height, *total_burned, is_owned)
             }
         }
-        Some((slabel, Some(Some(Covenant::Transfer { expire_height, .. })), _)) => {
-            registered_view(slabel, tip_height, *expire_height)
+        Some((slabel, Some(Some(Covenant::Transfer { expire_height, .. })), is_owned)) => {
+            registered_view(slabel, tip_height, *expire_height, is_owned)
         }
     };
 
