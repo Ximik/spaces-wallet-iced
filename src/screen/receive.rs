@@ -33,7 +33,7 @@ impl State {
     }
 
     pub fn view<'a>(
-        self,
+        &self,
         coin_address: Option<&'a Address>,
         space_address: Option<&'a Address>,
     ) -> Element<'a, Message> {

@@ -531,7 +531,7 @@ impl App {
                         Ok(_) => Task::done(Message::NavigateTo(Route::Transactions)),
                         Err(RpcError::Call { code, message }) => {
                             if code == -1 {
-                                if let Screen::Send(state) = self.screen {
+                                if let Screen::Send(state) = &mut self.screen {
                                     state.set_error(message);
                                 }
                             } else {
@@ -548,7 +548,7 @@ impl App {
                         Ok(_) => Task::done(Message::NavigateTo(Route::Transactions)),
                         Err(RpcError::Call { code, message }) => {
                             if code == -1 {
-                                if let Screen::Space(state) = self.screen {
+                                if let Screen::Space(state) = &mut self.screen {
                                     state.set_error(message);
                                 }
                             } else {
@@ -565,7 +565,7 @@ impl App {
                         Ok(_) => Task::done(Message::NavigateTo(Route::Transactions)),
                         Err(RpcError::Call { code, message }) => {
                             if code == -1 {
-                                if let Screen::Space(state) = self.screen {
+                                if let Screen::Space(state) = &mut self.screen {
                                     state.set_error(message);
                                 }
                             } else {
@@ -582,7 +582,7 @@ impl App {
                         Ok(_) => Task::done(Message::NavigateTo(Route::Transactions)),
                         Err(RpcError::Call { code, message }) => {
                             if code == -1 {
-                                if let Screen::Space(state) = self.screen {
+                                if let Screen::Space(state) = &mut self.screen {
                                     state.set_error(message);
                                 }
                             } else {
@@ -622,8 +622,9 @@ impl App {
                 }
                 Route::Space(space_name) => {
                     let state = screen::space::State::new(space_name);
+                    let slabel = state.get_slabel();
                     self.screen = Screen::Space(state);
-                    if let Some(slabel) = state.get_slabel() {
+                    if let Some(slabel) = slabel {
                         Task::done(Message::RpcRequest(RpcRequest::GetSpaceInfo { slabel }))
                     } else {
                         Task::none()
@@ -699,7 +700,7 @@ impl App {
             row![
                 navbar(&self.screen),
                 vertical_rule(3),
-                container(match self.screen {
+                container(match &self.screen {
                     Screen::Home => screen::home::view(
                         self.store.wallet.as_ref().unwrap().balance,
                         self.store.tip_height,
@@ -714,22 +715,14 @@ impl App {
                         )
                         .map(Message::ScreenReceive),
                     Screen::Space(state) => {
+                        let slabel = state.get_slabel();
                         state
                             .view(
                                 self.store.tip_height,
-                                match SLabel::from_str_unprefixed(&space_name) {
-                                    Ok(slabel) => Some((
-                                        slabel.clone(),
-                                        self.store.spaces.get(&slabel),
-                                        self.store
-                                            .wallet
-                                            .as_ref()
-                                            .unwrap()
-                                            .spaces
-                                            .contains(&slabel),
-                                    )),
-                                    Err(_) => None,
-                                },
+                                slabel.as_ref().map(|s| self.store.spaces.get(s)),
+                                slabel.as_ref().map_or(false, |s| {
+                                    self.store.wallet.as_ref().unwrap().spaces.contains(s)
+                                }),
                             )
                             .map(Message::ScreenSpace)
                     }

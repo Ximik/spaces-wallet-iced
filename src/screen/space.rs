@@ -1,4 +1,15 @@
-use crate::store::{Amount, Covenant, Denomination, SLabel};
+use crate::{
+    helper::height_to_est,
+    store::{Amount, Covenant, Denomination, SLabel},
+    widget::{
+        form::Form,
+        icon::{text_input_icon, Icon},
+    },
+};
+use iced::{
+    widget::{center, column, container, row, text, text_input, Space},
+    Element, Fill, Font,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {
@@ -88,40 +99,36 @@ impl State {
     }
 
     pub fn view<'a>(
-        &'a self,
+        &self,
         tip_height: u32,
-        space_name: &'a String,
-        space_data: Option<(SLabel, Option<&'a Option<Covenant>>, bool)>,
+        covenant: Option<Option<&'a Option<Covenant>>>,
+        is_owned: bool,
     ) -> Element<'a, Message> {
-        let main: Element<'a, Message> = match space_data {
-            None | Some((_, Some(Some(Covenant::Reserved)), _)) => {
+        let main: Element<'a, Message> = match covenant {
+            None | Some(Some(Some(Covenant::Reserved))) => {
                 text("Enter a valid space name in the input above").into()
             }
-            Some((_, None, _)) => Space::new(Fill, Fill).into(),
-            Some((slabel, Some(None), _)) => open_view(slabel),
-            Some((
-                slabel,
-                Some(Some(Covenant::Bid {
-                    claim_height,
-                    total_burned,
-                    ..
-                })),
-                is_owned,
-            )) => {
+            Some(None) => Space::new(Fill, Fill).into(),
+            Some(Some(None)) => open_view(),
+            Some(Some(Some(Covenant::Bid {
+                claim_height,
+                total_burned,
+                ..
+            }))) => {
                 if claim_height.map_or(false, |height| height <= tip_height) {
-                    claim_view(slabel, *total_burned, is_owned)
+                    claim_view(*total_burned, is_owned)
                 } else {
-                    bid_view(slabel, tip_height, *claim_height, *total_burned, is_owned)
+                    bid_view(tip_height, *claim_height, *total_burned, is_owned)
                 }
             }
-            Some((slabel, Some(Some(Covenant::Transfer { expire_height, .. })), is_owned)) => {
-                registered_view(slabel, tip_height, *expire_height, is_owned)
+            Some(Some(Some(Covenant::Transfer { expire_height, .. }))) => {
+                registered_view(tip_height, *expire_height, is_owned)
             }
         };
 
         column![
             container(
-                text_input("space", space_name)
+                text_input("space", &self.space_name)
                     .icon(text_input_icon(
                         Icon::At,
                         None,
@@ -246,19 +253,7 @@ mod timeline {
     }
 }
 
-use crate::{
-    helper::height_to_est,
-    widget::{
-        form::Form,
-        icon::{text_input_icon, Icon},
-    },
-};
-use iced::{
-    widget::{button, center, column, container, row, text, text_input, Space},
-    Element, Fill, Font,
-};
-
-fn open_view<'a>(slabel: SLabel) -> Element<'a, Message> {
+fn open_view<'a>() -> Element<'a, Message> {
     row![
         timeline::view(0, "Make an open to propose the space for auction"),
         Form::new("Open", None).add_labeled_input(
@@ -272,7 +267,6 @@ fn open_view<'a>(slabel: SLabel) -> Element<'a, Message> {
 }
 
 fn bid_view<'a>(
-    slabel: SLabel,
     tip_height: u32,
     claim_height: Option<u32>,
     current_bid: Amount,
@@ -304,7 +298,7 @@ fn bid_view<'a>(
     .into()
 }
 
-fn claim_view<'a>(slabel: SLabel, current_bid: Amount, is_owned: bool) -> Element<'a, Message> {
+fn claim_view<'a>(current_bid: Amount, is_owned: bool) -> Element<'a, Message> {
     row![
         timeline::view(
             3,
@@ -332,7 +326,6 @@ fn claim_view<'a>(slabel: SLabel, current_bid: Amount, is_owned: bool) -> Elemen
 }
 
 fn registered_view<'a>(
-    slabel: SLabel,
     tip_height: u32,
     expire_height: u32,
     is_owned: bool,
