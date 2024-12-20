@@ -1,9 +1,8 @@
 use iced::widget::{center, Column};
 use iced::Element;
 
-use crate::helper::input;
 use crate::{
-    helper::input::*,
+    types::*,
     widget::{block::error, form::Form},
 };
 
@@ -41,19 +40,19 @@ impl State {
     pub fn update(&mut self, message: Message) -> Task {
         match message {
             Message::RecipientInput(recipient) => {
-                if input::recipient_chars(&recipient) {
+                if is_recipient_input(&recipient) {
                     self.recipient = recipient;
                 }
                 Task::None
             }
             Message::AmountInput(amount) => {
-                if amount_chars(&amount) {
+                if is_amount_input(&amount) {
                     self.amount = amount
                 }
                 Task::None
             }
             Message::FeeRateInput(fee_rate) => {
-                if fee_rate_chars(&fee_rate) {
+                if is_fee_rate_input(&fee_rate) {
                     self.fee_rate = fee_rate
                 }
                 Task::None
@@ -61,9 +60,9 @@ impl State {
             Message::SendSubmit => {
                 self.error = None;
                 Task::SendCoins {
-                    recipient: recipient_value(&self.recipient).unwrap(),
-                    amount: amount_value(&self.amount).unwrap(),
-                    fee_rate: fee_rate_value(&self.fee_rate).unwrap(),
+                    recipient: recipient_from_str(&self.recipient).unwrap(),
+                    amount: amount_from_str(&self.amount).unwrap(),
+                    fee_rate: fee_rate_from_str(&self.fee_rate).unwrap(),
                 }
             }
         }
@@ -76,9 +75,9 @@ impl State {
                 .push(
                     Form::new(
                         "Send",
-                        (recipient_value(&self.recipient).is_some()
-                            && amount_value(&self.amount).is_some()
-                            && fee_rate_value(&self.fee_rate).is_some())
+                        (recipient_from_str(&self.recipient).is_some()
+                            && amount_from_str(&self.amount).is_some()
+                            && fee_rate_from_str(&self.fee_rate).is_some())
                         .then_some(Message::SendSubmit),
                     )
                     .add_labeled_input("Amount", "sat", &self.amount, Message::AmountInput)

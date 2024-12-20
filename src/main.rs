@@ -1,7 +1,8 @@
 mod app;
-mod helper;
+mod helpers;
 mod screen;
 mod store;
+mod types;
 mod widget;
 
 use app::App;

@@ -74,13 +74,16 @@ enum RpcRequest {
     OpenSpace {
         slabel: SLabel,
         amount: Amount,
+        fee_rate: Option<FeeRate>,
     },
     BidSpace {
         slabel: SLabel,
         amount: Amount,
+        fee_rate: Option<FeeRate>,
     },
     RegisterSpace {
         slabel: SLabel,
+        fee_rate: Option<FeeRate>,
     },
 }
 
@@ -341,7 +344,11 @@ impl App {
                             Task::none()
                         }
                     }
-                    RpcRequest::OpenSpace { slabel, amount } => {
+                    RpcRequest::OpenSpace {
+                        slabel,
+                        amount,
+                        fee_rate,
+                    } => {
                         if let Some(wallet) = self.store.get_wallet_name() {
                             Task::perform(
                                 async move {
@@ -355,7 +362,7 @@ impl App {
                                                 requests: vec![RpcWalletRequest::Open(
                                                     OpenParams { name, amount },
                                                 )],
-                                                fee_rate: None,
+                                                fee_rate,
                                                 dust: None,
                                                 force: false,
                                                 confirmed_only: false,
@@ -373,7 +380,11 @@ impl App {
                             Task::none()
                         }
                     }
-                    RpcRequest::BidSpace { slabel, amount } => {
+                    RpcRequest::BidSpace {
+                        slabel,
+                        amount,
+                        fee_rate,
+                    } => {
                         if let Some(wallet) = self.store.get_wallet_name() {
                             Task::perform(
                                 async move {
@@ -388,7 +399,7 @@ impl App {
                                                     name,
                                                     amount,
                                                 })],
-                                                fee_rate: None,
+                                                fee_rate,
                                                 dust: None,
                                                 force: false,
                                                 confirmed_only: false,
@@ -406,7 +417,7 @@ impl App {
                             Task::none()
                         }
                     }
-                    RpcRequest::RegisterSpace { slabel } => {
+                    RpcRequest::RegisterSpace { slabel, fee_rate } => {
                         if let Some(wallet) = self.store.get_wallet_name() {
                             Task::perform(
                                 async move {
@@ -421,7 +432,7 @@ impl App {
                                                         to: None,
                                                     },
                                                 )],
-                                                fee_rate: None,
+                                                fee_rate,
                                                 dust: None,
                                                 force: false,
                                                 confirmed_only: false,
@@ -696,17 +707,29 @@ impl App {
                         screen::space::Task::GetSpaceInfo { slabel } => {
                             Task::done(Message::RpcRequest(RpcRequest::GetSpaceInfo { slabel }))
                         }
-                        screen::space::Task::OpenSpace { slabel, amount } => {
-                            Task::done(Message::RpcRequest(RpcRequest::OpenSpace {
+                        screen::space::Task::OpenSpace {
+                            slabel,
+                            amount,
+                            fee_rate,
+                        } => Task::done(Message::RpcRequest(RpcRequest::OpenSpace {
+                            slabel,
+                            amount,
+                            fee_rate,
+                        })),
+                        screen::space::Task::BidSpace {
+                            slabel,
+                            amount,
+                            fee_rate,
+                        } => Task::done(Message::RpcRequest(RpcRequest::BidSpace {
+                            slabel,
+                            amount,
+                            fee_rate,
+                        })),
+                        screen::space::Task::ClaimSpace { slabel, fee_rate } => {
+                            Task::done(Message::RpcRequest(RpcRequest::RegisterSpace {
                                 slabel,
-                                amount,
+                                fee_rate,
                             }))
-                        }
-                        screen::space::Task::BidSpace { slabel, amount } => {
-                            Task::done(Message::RpcRequest(RpcRequest::BidSpace { slabel, amount }))
-                        }
-                        screen::space::Task::RegisterSpace { slabel } => {
-                            Task::done(Message::RpcRequest(RpcRequest::RegisterSpace { slabel }))
                         }
                         screen::space::Task::None => Task::none(),
                     }

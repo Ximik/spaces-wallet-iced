@@ -3,7 +3,7 @@ use iced::widget::{button, column, container, row, scrollable, text, Column};
 use iced::Alignment::Center;
 use iced::{Element, Fill, FillPortion};
 
-use crate::helper::height_to_est;
+use crate::helpers::height_to_est;
 use crate::store::{Amount, Covenant, Denomination, SLabel};
 
 #[derive(Debug, Clone)]

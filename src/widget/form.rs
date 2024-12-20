@@ -43,13 +43,6 @@ where
     .into()
 }
 
-struct FormInput<'a, Message> {
-    label: &'a str,
-    placeholder: &'a str,
-    value: &'a str,
-    on_input: Box<dyn Fn(String) -> Message + 'a>,
-}
-
 pub struct Form<'a, Message> {
     submit_label: &'a str,
     submit_message: Option<Message>,
