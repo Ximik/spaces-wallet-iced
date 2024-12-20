@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use iced::time;
 use iced::widget::{button, center, column, container, row, text, vertical_rule, Column};
-use iced::{clipboard, Center, Element, Fill, Subscription, Task, Theme};
+use iced::{clipboard, Center, Element, Fill, Subscription, Task};
 
 use jsonrpsee::core::ClientError;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
@@ -54,16 +54,34 @@ type RpcResult<T> = Result<T, RpcError>;
 #[derive(Debug, Clone)]
 enum RpcRequest {
     GetServerInfo,
-    GetSpaceInfo { slabel: SLabel },
-    LoadWallet { wallet: String },
+    GetSpaceInfo {
+        slabel: SLabel,
+    },
+    LoadWallet {
+        wallet: String,
+    },
     GetBalance,
     GetWalletSpaces,
     GetTransactions,
-    GetAddress { address_kind: AddressKind },
-    SendCoins { recipient: String, amount: Amount },
-    OpenSpace { slabel: SLabel, amount: Amount },
-    BidSpace { slabel: SLabel, amount: Amount },
-    RegisterSpace { slabel: SLabel },
+    GetAddress {
+        address_kind: AddressKind,
+    },
+    SendCoins {
+        recipient: String,
+        amount: Amount,
+        fee_rate: Option<FeeRate>,
+    },
+    OpenSpace {
+        slabel: SLabel,
+        amount: Amount,
+    },
+    BidSpace {
+        slabel: SLabel,
+        amount: Amount,
+    },
+    RegisterSpace {
+        slabel: SLabel,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -286,7 +304,11 @@ impl App {
                             Task::none()
                         }
                     }
-                    RpcRequest::SendCoins { recipient, amount } => {
+                    RpcRequest::SendCoins {
+                        recipient,
+                        amount,
+                        fee_rate,
+                    } => {
                         if let Some(wallet) = self.store.get_wallet_name() {
                             Task::perform(
                                 async move {
@@ -301,7 +323,7 @@ impl App {
                                                         to: recipient,
                                                     },
                                                 )],
-                                                fee_rate: None,
+                                                fee_rate,
                                                 dust: None,
                                                 force: false,
                                                 confirmed_only: false,
@@ -643,12 +665,15 @@ impl App {
             Message::ScreenSend(message) => {
                 if let Screen::Send(state) = &mut self.screen {
                     match state.update(message) {
-                        screen::send::Task::SendCoins { recipient, amount } => {
-                            Task::done(Message::RpcRequest(RpcRequest::SendCoins {
-                                recipient,
-                                amount,
-                            }))
-                        }
+                        screen::send::Task::SendCoins {
+                            recipient,
+                            amount,
+                            fee_rate,
+                        } => Task::done(Message::RpcRequest(RpcRequest::SendCoins {
+                            recipient,
+                            amount,
+                            fee_rate,
+                        })),
                         screen::send::Task::None => Task::none(),
                     }
                 } else {

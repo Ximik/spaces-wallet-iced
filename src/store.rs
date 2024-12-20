@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use spaced::wallets;
 
 pub use protocol::{slabel::SLabel, Covenant, FullSpaceOut};
-pub use wallet::bitcoin::{Amount, Denomination};
+pub use wallet::bitcoin::{Amount, Denomination, FeeRate};
 pub use wallets::{AddressKind, Balance, TxInfo, WalletOutput};
 
 #[derive(Debug)]

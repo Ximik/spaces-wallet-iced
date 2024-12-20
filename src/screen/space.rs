@@ -99,7 +99,7 @@ impl State {
     }
 
     pub fn view<'a>(
-        &self,
+        &'a self,
         tip_height: u32,
         covenant: Option<Option<&'a Option<Covenant>>>,
         is_owned: bool,
