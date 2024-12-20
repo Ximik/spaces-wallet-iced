@@ -111,7 +111,7 @@ enum RpcResponse {
 }
 
 #[derive(Debug, Clone)]
-enum Screen {
+enum Route {
     Home,
     Send,
     Receive,
@@ -123,7 +123,7 @@ enum Screen {
 enum Message {
     RpcRequest(RpcRequest),
     RpcResponse(RpcResponse),
-    SetScreen(Screen),
+    NavigateTo(Route),
     ScreenHome(screen::home::Message),
     ScreenSend(screen::send::Message),
     ScreenReceive(screen::receive::Message),
@@ -131,14 +131,20 @@ enum Message {
     ScreenTransactions(screen::transactions::Message),
 }
 
+#[derive(Debug, Clone)]
+enum Screen {
+    Home,
+    Send(screen::send::State),
+    Receive(screen::receive::State),
+    Space(screen::space::State),
+    Transactions,
+}
+
 pub struct App {
     rpc_client: Arc<HttpClient>,
     rpc_error: Option<String>,
     store: Store,
     screen: Screen,
-    screen_send: screen::send::State,
-    screen_receive: screen::receive::State,
-    screen_space: screen::space::State,
 }
 
 impl App {
@@ -171,9 +177,6 @@ impl App {
                 rpc_error: None,
                 store: Default::default(),
                 screen: Screen::Home,
-                screen_send: Default::default(),
-                screen_receive: Default::default(),
-                screen_space: Default::default(),
             },
             Task::done(Message::RpcRequest(RpcRequest::LoadWallet {
                 wallet: args.wallet.into(),
@@ -447,7 +450,7 @@ impl App {
                     RpcResponse::LoadWallet { wallet, result } => match result {
                         Ok(_) => {
                             self.store.wallet = Some(Wallet::new(wallet));
-                            Task::done(Message::SetScreen(Screen::Home))
+                            Task::done(Message::NavigateTo(Route::Home))
                         }
                         Err(e) => {
                             self.rpc_error = Some(e.to_string());
@@ -525,10 +528,12 @@ impl App {
                         Task::none()
                     }
                     RpcResponse::SendCoins { result } => match result {
-                        Ok(_) => Task::done(Message::SetScreen(Screen::Transactions)),
+                        Ok(_) => Task::done(Message::NavigateTo(Route::Transactions)),
                         Err(RpcError::Call { code, message }) => {
                             if code == -1 {
-                                self.screen_send.set_error(message);
+                                if let Screen::Send(state) = self.screen {
+                                    state.set_error(message);
+                                }
                             } else {
                                 self.rpc_error = Some(message);
                             }
@@ -540,10 +545,12 @@ impl App {
                         }
                     },
                     RpcResponse::OpenSpace { result } => match result {
-                        Ok(_) => Task::done(Message::SetScreen(Screen::Transactions)),
+                        Ok(_) => Task::done(Message::NavigateTo(Route::Transactions)),
                         Err(RpcError::Call { code, message }) => {
                             if code == -1 {
-                                self.screen_space.set_error(message);
+                                if let Screen::Space(state) = self.screen {
+                                    state.set_error(message);
+                                }
                             } else {
                                 self.rpc_error = Some(message);
                             }
@@ -555,10 +562,12 @@ impl App {
                         }
                     },
                     RpcResponse::BidSpace { result } => match result {
-                        Ok(_) => Task::done(Message::SetScreen(Screen::Transactions)),
+                        Ok(_) => Task::done(Message::NavigateTo(Route::Transactions)),
                         Err(RpcError::Call { code, message }) => {
                             if code == -1 {
-                                self.screen_space.set_error(message);
+                                if let Screen::Space(state) = self.screen {
+                                    state.set_error(message);
+                                }
                             } else {
                                 self.rpc_error = Some(message);
                             }
@@ -570,10 +579,12 @@ impl App {
                         }
                     },
                     RpcResponse::RegisterSpace { result } => match result {
-                        Ok(_) => Task::done(Message::SetScreen(Screen::Transactions)),
+                        Ok(_) => Task::done(Message::NavigateTo(Route::Transactions)),
                         Err(RpcError::Call { code, message }) => {
                             if code == -1 {
-                                self.screen_space.set_error(message);
+                                if let Screen::Space(state) = self.screen {
+                                    state.set_error(message);
+                                }
                             } else {
                                 self.rpc_error = Some(message);
                             }
@@ -586,76 +597,95 @@ impl App {
                     },
                 }
             }
-            Message::SetScreen(screen) => {
-                self.screen = screen;
-                match self.screen {
-                    Screen::Home => Task::batch([
+            Message::NavigateTo(route) => match route {
+                Route::Home => {
+                    self.screen = Screen::Home;
+                    Task::batch([
                         Task::done(Message::RpcRequest(RpcRequest::GetBalance)),
                         Task::done(Message::RpcRequest(RpcRequest::GetWalletSpaces)),
-                    ]),
-                    Screen::Send => Task::none(),
-                    Screen::Receive => Task::batch([
+                    ])
+                }
+                Route::Send => {
+                    self.screen = Screen::Send(Default::default());
+                    Task::none()
+                }
+                Route::Receive => {
+                    self.screen = Screen::Receive(Default::default());
+                    Task::batch([
                         Task::done(Message::RpcRequest(RpcRequest::GetAddress {
                             address_kind: AddressKind::Coin,
                         })),
                         Task::done(Message::RpcRequest(RpcRequest::GetAddress {
                             address_kind: AddressKind::Space,
                         })),
-                    ]),
-                    Screen::Space(ref space_name) => {
-                        if let Ok(slabel) = SLabel::from_str_unprefixed(space_name) {
-                            Task::done(Message::RpcRequest(RpcRequest::GetSpaceInfo {
-                                slabel: slabel.clone(),
-                            }))
-                        } else {
-                            Task::none()
-                        }
-                    }
-                    Screen::Transactions => {
-                        Task::done(Message::RpcRequest(RpcRequest::GetTransactions))
+                    ])
+                }
+                Route::Space(space_name) => {
+                    let state = screen::space::State::new(space_name);
+                    self.screen = Screen::Space(state);
+                    if let Some(slabel) = state.get_slabel() {
+                        Task::done(Message::RpcRequest(RpcRequest::GetSpaceInfo { slabel }))
+                    } else {
+                        Task::none()
                     }
                 }
-            }
+                Route::Transactions => {
+                    self.screen = Screen::Transactions;
+                    Task::done(Message::RpcRequest(RpcRequest::GetTransactions))
+                }
+            },
             Message::ScreenHome(message) => match message {
                 screen::home::Message::SpaceClicked { space_name } => {
-                    Task::done(Message::SetScreen(Screen::Space(space_name)))
+                    Task::done(Message::NavigateTo(Route::Space(space_name)))
                 }
             },
             Message::ScreenSend(message) => {
-                match screen::send::update(&mut self.screen_send, message) {
-                    screen::send::Task::SendCoins { recipient, amount } => {
-                        Task::done(Message::RpcRequest(RpcRequest::SendCoins {
-                            recipient,
-                            amount,
-                        }))
+                if let Screen::Send(state) = &mut self.screen {
+                    match state.update(message) {
+                        screen::send::Task::SendCoins { recipient, amount } => {
+                            Task::done(Message::RpcRequest(RpcRequest::SendCoins {
+                                recipient,
+                                amount,
+                            }))
+                        }
+                        screen::send::Task::None => Task::none(),
                     }
-                    screen::send::Task::None => Task::none(),
+                } else {
+                    Task::none()
                 }
             }
             Message::ScreenReceive(message) => {
-                match screen::receive::update(&mut self.screen_receive, message) {
-                    screen::receive::Task::WriteClipboard(s) => clipboard::write(s),
-                    screen::receive::Task::None => Task::none(),
+                if let Screen::Receive(state) = &mut self.screen {
+                    match state.update(message) {
+                        screen::receive::Task::WriteClipboard(s) => clipboard::write(s),
+                        screen::receive::Task::None => Task::none(),
+                    }
+                } else {
+                    Task::none()
                 }
             }
             Message::ScreenSpace(message) => {
-                match screen::space::update(&mut self.screen_space, message) {
-                    screen::space::Task::SetSpace { space_name } => {
-                        Task::done(Message::SetScreen(Screen::Space(space_name)))
+                if let Screen::Space(state) = &mut self.screen {
+                    match state.update(message) {
+                        screen::space::Task::GetSpaceInfo { slabel } => {
+                            Task::done(Message::RpcRequest(RpcRequest::GetSpaceInfo { slabel }))
+                        }
+                        screen::space::Task::OpenSpace { slabel, amount } => {
+                            Task::done(Message::RpcRequest(RpcRequest::OpenSpace {
+                                slabel,
+                                amount,
+                            }))
+                        }
+                        screen::space::Task::BidSpace { slabel, amount } => {
+                            Task::done(Message::RpcRequest(RpcRequest::BidSpace { slabel, amount }))
+                        }
+                        screen::space::Task::RegisterSpace { slabel } => {
+                            Task::done(Message::RpcRequest(RpcRequest::RegisterSpace { slabel }))
+                        }
+                        screen::space::Task::None => Task::none(),
                     }
-                    screen::space::Task::OpenSpace { slabel, amount } => {
-                        Task::done(Message::RpcRequest(RpcRequest::OpenSpace {
-                            slabel,
-                            amount,
-                        }))
-                    }
-                    screen::space::Task::BidSpace { slabel, amount } => {
-                        Task::done(Message::RpcRequest(RpcRequest::BidSpace { slabel, amount }))
-                    }
-                    screen::space::Task::RegisterSpace { slabel } => {
-                        Task::done(Message::RpcRequest(RpcRequest::RegisterSpace { slabel }))
-                    }
-                    screen::space::Task::None => Task::none(),
+                } else {
+                    Task::none()
                 }
             }
             Message::ScreenTransactions(message) => match message {
@@ -676,28 +706,32 @@ impl App {
                         self.store.get_wallet_spaces().unwrap(),
                     )
                     .map(Message::ScreenHome),
-                    Screen::Send => screen::send::view(&self.screen_send).map(Message::ScreenSend),
-                    Screen::Receive => screen::receive::view(
-                        &self.screen_receive,
-                        self.store.wallet.as_ref().unwrap().coin_address.as_ref(),
-                        self.store.wallet.as_ref().unwrap().space_address.as_ref(),
-                    )
-                    .map(Message::ScreenReceive),
-                    Screen::Space(ref space_name) => {
-                        screen::space::view(
-                            &self.screen_space,
-                            self.store.tip_height,
-                            space_name,
-                            match SLabel::from_str_unprefixed(&space_name) {
-                                Ok(slabel) => Some((
-                                    slabel.clone(),
-                                    self.store.spaces.get(&slabel),
-                                    self.store.wallet.as_ref().unwrap().spaces.contains(&slabel),
-                                )),
-                                Err(_) => None,
-                            },
+                    Screen::Send(state) => state.view().map(Message::ScreenSend),
+                    Screen::Receive(state) => state
+                        .view(
+                            self.store.wallet.as_ref().unwrap().coin_address.as_ref(),
+                            self.store.wallet.as_ref().unwrap().space_address.as_ref(),
                         )
-                        .map(Message::ScreenSpace)
+                        .map(Message::ScreenReceive),
+                    Screen::Space(state) => {
+                        state
+                            .view(
+                                self.store.tip_height,
+                                match SLabel::from_str_unprefixed(&space_name) {
+                                    Ok(slabel) => Some((
+                                        slabel.clone(),
+                                        self.store.spaces.get(&slabel),
+                                        self.store
+                                            .wallet
+                                            .as_ref()
+                                            .unwrap()
+                                            .spaces
+                                            .contains(&slabel),
+                                    )),
+                                    Err(_) => None,
+                                },
+                            )
+                            .map(Message::ScreenSpace)
                     }
                     Screen::Transactions => screen::transactions::view(
                         &self.store.wallet.as_ref().unwrap().transactions
@@ -730,49 +764,48 @@ impl App {
     }
 }
 
-fn navbar<'a>(current_screen: &'a Screen) -> Element<'a, Message> {
-    let navbar_button = |label, icon: Icon, is_active, screen| {
+fn navbar<'a>(screen: &'a Screen) -> Element<'a, Message> {
+    let navbar_button = |label, icon: Icon, route: Route, is_current: bool| {
         let button = button(row![text_icon(icon).size(18), text(label)].spacing(10))
-            .style(if is_active {
+            .style(if is_current {
                 button::primary
             } else {
                 button::text
             })
-            .padding(10)
             .width(Fill);
-        button.on_press(Message::SetScreen(screen))
+        button.on_press(Message::NavigateTo(route))
     };
 
     container(column![
         navbar_button(
             "Home",
             Icon::Artboard,
-            matches!(current_screen, Screen::Home),
-            Screen::Home
+            Route::Home,
+            matches!(screen, Screen::Home)
         ),
         navbar_button(
             "Send",
             Icon::ArrowDownFromArc,
-            matches!(current_screen, Screen::Send),
-            Screen::Send
+            Route::Send,
+            matches!(screen, Screen::Send(..))
         ),
         navbar_button(
             "Receive",
             Icon::ArrowDownToArc,
-            matches!(current_screen, Screen::Receive),
-            Screen::Receive
+            Route::Receive,
+            matches!(screen, Screen::Receive(..))
         ),
         navbar_button(
             "Space",
             Icon::At,
-            matches!(current_screen, Screen::Space(..)),
-            Screen::Space(String::new())
+            Route::Space(String::new()),
+            matches!(screen, Screen::Space(..))
         ),
         navbar_button(
             "Transactions",
             Icon::ArrowsExchange,
-            matches!(current_screen, Screen::Transactions),
-            Screen::Transactions
+            Route::Transactions,
+            matches!(screen, Screen::Transactions)
         ),
     ])
     .width(200)

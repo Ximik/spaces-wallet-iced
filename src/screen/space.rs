@@ -2,15 +2,10 @@ use crate::store::{Amount, Covenant, Denomination, SLabel};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {
+    space_name: String,
     amount: String,
     fee_rate: String,
     error: Option<String>,
-}
-
-impl State {
-    pub fn set_error(&mut self, error: String) {
-        self.error = Some(error)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -25,7 +20,7 @@ pub enum Message {
 #[derive(Debug, Clone)]
 pub enum Task {
     None,
-    SetSpace { space_name: String },
+    GetSpaceInfo { slabel: SLabel },
     OpenSpace { slabel: SLabel, amount: Amount },
     BidSpace { slabel: SLabel, amount: Amount },
     RegisterSpace { slabel: SLabel },
@@ -35,39 +30,113 @@ fn validate(bid_amount: &String) -> Option<Amount> {
     Amount::from_str_in(bid_amount, Denomination::Satoshi).ok()
 }
 
-pub fn update(state: &mut State, message: Message) -> Task {
-    state.error = None;
-    match message {
-        Message::SpaceNameInput(space_name) => {
-            if space_name
-                .chars()
-                .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase() || c == '-')
-            {
-                Task::SetSpace { space_name }
-            } else {
+impl State {
+    pub fn new(space_name: String) -> Self {
+        Self {
+            space_name,
+            ..Self::default()
+        }
+    }
+
+    pub fn set_error(&mut self, error: String) {
+        self.error = Some(error)
+    }
+
+    pub fn get_slabel(&self) -> Option<SLabel> {
+        SLabel::from_str_unprefixed(&self.space_name).ok()
+    }
+
+    pub fn update(&mut self, message: Message) -> Task {
+        self.error = None;
+        match message {
+            Message::SpaceNameInput(space_name) => {
+                if space_name
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase() || c == '-')
+                {
+                    self.space_name = space_name;
+                    if let Some(slabel) = self.get_slabel() {
+                        Task::GetSpaceInfo { slabel }
+                    } else {
+                        Task::None
+                    }
+                } else {
+                    Task::None
+                }
+            }
+            Message::AmountInput(amount) => {
+                if amount.chars().all(|c| c.is_digit(10)) {
+                    self.amount = amount
+                }
                 Task::None
             }
-        }
-        Message::AmountInput(amount) => {
-            if amount.chars().all(|c| c.is_digit(10)) {
-                state.amount = amount
-            }
-            Task::None
-        }
-        Message::FeeRateInput(fee_rate) => {
-            if fee_rate.chars().all(|c| c.is_digit(10) || c == '.') {
-                state.fee_rate = fee_rate
-            }
-            Task::None
-        }
-        Message::BidPress(slabel, open) => {
-            if let Some(amount) = validate(&state.amount) {
-                Task::BidSpace { slabel, amount }
-            } else {
+            Message::FeeRateInput(fee_rate) => {
+                if fee_rate.chars().all(|c| c.is_digit(10) || c == '.') {
+                    self.fee_rate = fee_rate
+                }
                 Task::None
             }
+            Message::BidPress(slabel, open) => {
+                if let Some(amount) = validate(&self.amount) {
+                    Task::BidSpace { slabel, amount }
+                } else {
+                    Task::None
+                }
+            }
+            Message::RegisterPress(slabel) => Task::RegisterSpace { slabel },
         }
-        Message::RegisterPress(slabel) => Task::RegisterSpace { slabel },
+    }
+
+    pub fn view<'a>(
+        &'a self,
+        tip_height: u32,
+        space_name: &'a String,
+        space_data: Option<(SLabel, Option<&'a Option<Covenant>>, bool)>,
+    ) -> Element<'a, Message> {
+        let main: Element<'a, Message> = match space_data {
+            None | Some((_, Some(Some(Covenant::Reserved)), _)) => {
+                text("Enter a valid space name in the input above").into()
+            }
+            Some((_, None, _)) => Space::new(Fill, Fill).into(),
+            Some((slabel, Some(None), _)) => open_view(slabel),
+            Some((
+                slabel,
+                Some(Some(Covenant::Bid {
+                    claim_height,
+                    total_burned,
+                    ..
+                })),
+                is_owned,
+            )) => {
+                if claim_height.map_or(false, |height| height <= tip_height) {
+                    claim_view(slabel, *total_burned, is_owned)
+                } else {
+                    bid_view(slabel, tip_height, *claim_height, *total_burned, is_owned)
+                }
+            }
+            Some((slabel, Some(Some(Covenant::Transfer { expire_height, .. })), is_owned)) => {
+                registered_view(slabel, tip_height, *expire_height, is_owned)
+            }
+        };
+
+        column![
+            container(
+                text_input("space", space_name)
+                    .icon(text_input_icon(
+                        Icon::At,
+                        None,
+                        10.0,
+                        text_input::Side::Left
+                    ))
+                    .on_input(Message::SpaceNameInput)
+                    .font(Font::MONOSPACE)
+                    .padding(10)
+            )
+            .padding(20),
+            center(main).padding(20),
+        ]
+        .spacing(10)
+        .into()
     }
 }
 
@@ -186,9 +255,8 @@ use crate::{
 };
 use iced::{
     widget::{button, center, column, container, row, text, text_input, Space},
-    Center, Element, Fill, Font, Shrink, Theme,
+    Element, Fill, Font,
 };
-use wallet::bitcoin::absolute::Height;
 
 fn open_view<'a>(slabel: SLabel) -> Element<'a, Message> {
     row![
@@ -283,57 +351,5 @@ fn registered_view<'a>(
             column![Space::new(Fill, Fill)]
         }
     ]
-    .into()
-}
-
-pub fn view<'a>(
-    state: &'a State,
-    tip_height: u32,
-    space_name: &'a String,
-    space_data: Option<(SLabel, Option<&'a Option<Covenant>>, bool)>,
-) -> Element<'a, Message> {
-    let main: Element<'a, Message> = match space_data {
-        None | Some((_, Some(Some(Covenant::Reserved)), _)) => {
-            text("Enter a valid space name in the input above").into()
-        }
-        Some((_, None, _)) => Space::new(Fill, Fill).into(),
-        Some((slabel, Some(None), _)) => open_view(slabel),
-        Some((
-            slabel,
-            Some(Some(Covenant::Bid {
-                claim_height,
-                total_burned,
-                ..
-            })),
-            is_owned,
-        )) => {
-            if claim_height.map_or(false, |height| height <= tip_height) {
-                claim_view(slabel, *total_burned, is_owned)
-            } else {
-                bid_view(slabel, tip_height, *claim_height, *total_burned, is_owned)
-            }
-        }
-        Some((slabel, Some(Some(Covenant::Transfer { expire_height, .. })), is_owned)) => {
-            registered_view(slabel, tip_height, *expire_height, is_owned)
-        }
-    };
-
-    column![
-        container(
-            text_input("space", space_name)
-                .icon(text_input_icon(
-                    Icon::At,
-                    None,
-                    10.0,
-                    text_input::Side::Left
-                ))
-                .on_input(Message::SpaceNameInput)
-                .font(Font::MONOSPACE)
-                .padding(10)
-        )
-        .padding(20),
-        center(main).padding(20),
-    ]
-    .spacing(10)
     .into()
 }

@@ -14,17 +14,11 @@ pub struct State {
     error: Option<String>,
 }
 
-impl State {
-    pub fn set_error(&mut self, error: String) {
-        self.error = Some(error)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum Message {
     RecipientInput(String),
     AmountInput(String),
-    SendPress,
+    SendSubmit,
 }
 
 #[derive(Debug, Clone)]
@@ -42,62 +36,68 @@ fn validate(recipient: &String, amount: &String) -> Option<(String, Amount)> {
         .map(|amount| (recipient.clone(), amount))
 }
 
-pub fn update(state: &mut State, message: Message) -> Task {
-    match message {
-        Message::RecipientInput(recipient) => {
-            if recipient
-                .chars()
-                .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase() || c == '@')
-            {
-                state.recipient = recipient;
-            }
-            Task::None
-        }
-        Message::AmountInput(amount) => {
-            if amount.chars().all(|c| c.is_digit(10)) {
-                state.amount = amount
-            }
-            Task::None
-        }
-        Message::SendPress => {
-            state.error = None;
-            if let Some((recipient, amount)) = validate(&state.recipient, &state.amount) {
-                Task::SendCoins { recipient, amount }
-            } else {
+impl State {
+    pub fn set_error(&mut self, message: String) {
+        self.error = Some(message);
+    }
+
+    pub fn update(&mut self, message: Message) -> Task {
+        match message {
+            Message::RecipientInput(recipient) => {
+                if recipient
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase() || c == '@')
+                {
+                    self.recipient = recipient;
+                }
                 Task::None
+            }
+            Message::AmountInput(amount) => {
+                if amount.chars().all(|c| c.is_digit(10)) {
+                    self.amount = amount
+                }
+                Task::None
+            }
+            Message::SendSubmit => {
+                self.error = None;
+                if let Some((recipient, amount)) = validate(&self.recipient, &self.amount) {
+                    Task::SendCoins { recipient, amount }
+                } else {
+                    Task::None
+                }
             }
         }
     }
-}
 
-pub fn view<'a>(state: &'a State) -> Element<'a, Message> {
-    let is_valid = validate(&state.recipient, &state.amount).is_some();
-    let maybe_submit = is_valid.then_some(Message::SendPress);
-    center(
-        Column::new()
-            .push_maybe(state.error.as_ref().map(error))
-            .push(
-                column![
-                    labeled_input(
-                        "Amount",
-                        "amount in sat",
-                        &state.amount,
-                        Message::AmountInput,
-                        maybe_submit.clone(),
-                    ),
-                    labeled_input(
-                        "To",
-                        "bitcoin address or @space",
-                        &state.recipient,
-                        Message::RecipientInput,
-                        maybe_submit.clone(),
-                    ),
-                ]
-                .spacing(5),
-            )
-            .push(submit_button("Send", maybe_submit))
-            .spacing(10),
-    )
-    .padding(20)
-    .into()
+    pub fn view<'a>(&'a self) -> Element<'a, Message> {
+        let is_valid = validate(&self.recipient, &self.amount).is_some();
+        let send_submit = is_valid.then_some(Message::SendSubmit);
+        center(
+            Column::new()
+                .push_maybe(self.error.as_ref().map(error))
+                .push(
+                    column![
+                        labeled_input(
+                            "Amount",
+                            "amount in sat",
+                            &self.amount,
+                            Message::AmountInput,
+                            send_submit.clone(),
+                        ),
+                        labeled_input(
+                            "To",
+                            "bitcoin address or @space",
+                            &self.recipient,
+                            Message::RecipientInput,
+                            send_submit.clone(),
+                        ),
+                    ]
+                    .spacing(5),
+                )
+                .push(submit_button("Send", send_submit))
+                .spacing(10),
+        )
+        .padding(20)
+        .into()
+    }
 }

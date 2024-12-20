@@ -17,7 +17,7 @@ pub fn view<'a>(
     spaces: impl Iterator<Item = (&'a SLabel, &'a Covenant)>,
 ) -> Element<'a, Message> {
     let mut spaces = spaces.collect::<Vec<_>>();
-    spaces.sort_unstable_by_key(|s| s.0);
+    spaces.sort_unstable_by_key(|s| s.0.as_str_unprefixed().unwrap());
 
     let transfer_spaces = spaces
         .iter()
@@ -77,7 +77,7 @@ pub fn view<'a>(
                         text(
                             claim_height
                                 .map(|h| height_to_est(h, tip_height))
-                                .unwrap_or("no rollout".to_string())
+                                .unwrap_or("pre-auction".to_string())
                         )
                         .width(FillPortion(1)),
                         container(button("View").on_press(Message::SpaceClicked { space_name }))
